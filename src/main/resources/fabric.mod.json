@@ -15,7 +15,7 @@
 	"icon": "assets/asteria/icon.png",
 	"jars": [
 		{
-			"file": "META-INF/jars/figura-0.1.6-port.1+26.1.2-fabric-mc.jar"
+			"file": "META-INF/jars/figura-0.1.6-port.4+26.1.2-fabric-mc.jar"
 		}
 	],
 	"environment": "*",

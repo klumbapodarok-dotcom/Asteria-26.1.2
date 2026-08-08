@@ -1,6 +1,7 @@
 package asteria.top.client.mixin
 
 import asteria.top.client.gui.AsteriaClickGui
+import asteria.top.client.gui.CosmeticsMenu
 import asteria.top.client.gui.HudOverlay
 import net.minecraft.client.DeltaTracker
 import net.minecraft.client.Minecraft
@@ -20,14 +21,14 @@ class GuiMixin {
         asteria.top.client.module.ModuleManager.arrows.onRenderWithEntities(graphics, deltaTracker.getGameTimeDeltaPartialTick(false))
         asteria.top.client.module.ModuleManager.predictions.onRenderWithEntities(graphics, deltaTracker.getGameTimeDeltaPartialTick(false))
         asteria.top.client.module.ModuleManager.trapEsp.onRenderWithEntities(graphics, deltaTracker.getGameTimeDeltaPartialTick(false))
-        if (!AsteriaClickGui.shouldRender()) return
+        if (!AsteriaClickGui.shouldRender() && !CosmeticsMenu.shouldRender()) return
         // Vanilla screens (pause menu, options, chat, etc.) own the single
         // blur boundary allowed by GuiRenderState for this frame.
         if (Minecraft.getInstance().screen != null) return
         // Draw HUD first, then blur the framebuffer before ClickGUI strata.
         graphics.nextStratum()
         graphics.blurBeforeThisStratum()
-        AsteriaClickGui.extract(graphics)
+        if (CosmeticsMenu.shouldRender()) CosmeticsMenu.extract(graphics) else AsteriaClickGui.extract(graphics)
         ci.cancel()
     }
 

@@ -152,6 +152,7 @@ object AsteriaGuiRenderer {
         progress: Float,
         fillColor: Int,
         trackColor: Int,
+        thumbColor: Int = fillColor,
     ) {
         val pct = progress.coerceIn(0.0f, 1.0f)
         val fillWidth = width * pct
@@ -162,7 +163,7 @@ object AsteriaGuiRenderer {
         if (fillWidth > 0.0f) {
             rect(boxes, x, y, max(height, fillWidth), height, PILL_RADIUS, fillColor)
         }
-        rect(boxes, thumbX, thumbY, thumbDiameter, thumbDiameter, PILL_RADIUS, fillColor)
+        rect(boxes, thumbX, thumbY, thumbDiameter, thumbDiameter, PILL_RADIUS, thumbColor)
     }
 
     fun switch(

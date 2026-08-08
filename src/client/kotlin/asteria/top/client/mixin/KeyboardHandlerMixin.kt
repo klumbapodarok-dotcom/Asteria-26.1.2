@@ -1,6 +1,7 @@
 package asteria.top.client.mixin
 
 import asteria.top.client.gui.AsteriaClickGui
+import asteria.top.client.gui.CosmeticsMenu
 import asteria.top.client.gui.HudOverlay
 import asteria.top.client.module.ModuleManager
 import net.minecraft.client.Minecraft
@@ -17,6 +18,10 @@ class KeyboardHandlerMixin {
     @Inject(method = ["keyPress"], at = [At("HEAD")], cancellable = true)
     private fun glacierOnKey(window: Long, action: Int, event: KeyEvent, ci: CallbackInfo) {
         val mc = Minecraft.getInstance()
+        if (CosmeticsMenu.keyPressed(event.key(), action)) {
+            ci.cancel()
+            return
+        }
         if (action == GLFW.GLFW_PRESS && mc.screen == null && event.key() == GLFW.GLFW_KEY_INSERT && HudOverlay.toggleEditor()) {
             ci.cancel()
             return

@@ -44,6 +44,7 @@ object AsteriaClickGui {
     private const val ROW_HEIGHT = 25.5f
     private const val ROW_GAP = 4.5f
     private const val ROW_STEP = ROW_HEIGHT + ROW_GAP
+    private const val INLINE_EXPANSION_ANIMATION_MS = 300.0f
     private const val MODULE_ROW_RADIUS = 8.5f
     private const val PROFILE_WIDTH = 97.5f
     private const val PROFILE_HEIGHT = 41.5f
@@ -58,7 +59,7 @@ object AsteriaClickGui {
     private const val POPUP_NUMERIC_ROW_HEIGHT = 25.0f
     private const val POPUP_OPTION_ROW_HEIGHT = 16.5f
     private const val POPUP_ROW_GAP = 4.0f
-    private const val POPUP_HORIZONTAL_PADDING = 9.5f
+    private const val POPUP_HORIZONTAL_PADDING = 7.25f
     private const val POPUP_ENUM_HORIZONTAL_PADDING = 5.5f
     private const val POPUP_ENUM_RADIUS = 7.0f
     private const val POPUP_SCALE = 1.15f
@@ -73,7 +74,7 @@ object AsteriaClickGui {
 
     private const val PANEL_COLOR = 0xD9000000.toInt()
     private const val PROFILE_COLOR = 0xD9000000.toInt()
-    private const val ROW_COLOR = 0x66000000
+    private const val ROW_COLOR = 0x52000000
     private const val ROW_HOVER_COLOR = 0x24FFFFFF
     private const val POPUP_COLOR = 0xC4000000.toInt()
     private const val POPUP_FOREGROUND_COLOR = 0x70000000
@@ -90,7 +91,7 @@ object AsteriaClickGui {
 
     data class Rect(val x: Float, val y: Float, val width: Float, val height: Float)
     private data class Frame(val x: Float, val y: Float, val scale: Float, val width: Float, val height: Float)
-    private data class ModuleRow(val module: Module, val rect: Rect)
+    private data class ModuleRow(val module: Module, val rect: Rect, val headerRect: Rect, val expansion: Float)
     private data class CategoryPanel(val category: ModuleCategory, val rect: Rect, val rows: List<ModuleRow>)
     private data class SettingTarget(
         val label: String,
@@ -108,6 +109,7 @@ object AsteriaClickGui {
         val rows: List<SettingRow>,
         val maxScroll: Float,
         val scale: Float,
+        val contentAlpha: Float,
     )
     private data class Layout(val frame: Frame, val profile: Rect, val panels: List<CategoryPanel>, val popup: Popup?)
     private data class SwitchAnimation(var from: Float, var target: Float, var startedAt: Long)
@@ -115,6 +117,7 @@ object AsteriaClickGui {
     private data class HoverAnimation(var value: Float, var updatedAt: Long)
     private data class ScrollAnimation(var position: Float, var target: Float, var updatedAt: Long)
     private data class IconClickAnimation(var startedAt: Long)
+    private data class NumericAnimation(var value: Float, var updatedAt: Long)
 
     @JvmStatic
     var visible = false
@@ -125,8 +128,7 @@ object AsteriaClickGui {
     private var animationStartedAt = 0L
     private val categoryScrolls = mutableMapOf<ModuleCategory, ScrollAnimation>()
     private var popupModule: Module? = null
-    private var popupAnchorX = 0.0f
-    private var popupAnchorY = 0.0f
+    private var popupExpanded = false
     private val popupScroll = ScrollAnimation(0.0f, 0.0f, 0L)
     private var bindingModule: Module? = null
     private var expandedEnum: EnumSetting<*>? = null
@@ -135,6 +137,7 @@ object AsteriaClickGui {
     private val switchAnimations = mutableMapOf<String, SwitchAnimation>()
     private val hoverAnimations = mutableMapOf<String, HoverAnimation>()
     private val iconClickAnimations = mutableMapOf<String, IconClickAnimation>()
+    private val numericAnimations = mutableMapOf<String, NumericAnimation>()
 
     private val categories = listOf(
         ModuleCategory.COMBAT,
@@ -153,6 +156,7 @@ object AsteriaClickGui {
             renderVisible = true
             Minecraft.getInstance().mouseHandler.releaseMouse()
         } else {
+            popupExpanded = false
             popupModule = null
             bindingModule = null
             activeNumeric = null
@@ -161,6 +165,27 @@ object AsteriaClickGui {
             val mc = Minecraft.getInstance()
             if (mc.level != null && mc.screen == null) mc.mouseHandler.grabMouse()
         }
+    }
+
+    @JvmStatic
+    fun hideForCosmetics() {
+        visible = false
+        renderVisible = false
+        popupExpanded = false
+        popupModule = null
+        bindingModule = null
+        activeNumeric = null
+        activeNumericRect = null
+        ClientConfig.save()
+    }
+
+    @JvmStatic
+    fun showFromCosmetics() {
+        visible = true
+        renderVisible = true
+        opening = true
+        animationStartedAt = now()
+        Minecraft.getInstance().mouseHandler.releaseMouse()
     }
 
     @JvmStatic
@@ -185,9 +210,6 @@ object AsteriaClickGui {
         }
         layout.panels.forEach { panel ->
             boxes += blurBox(panel.rect, PANEL_CORNER_RADIUS * layout.frame.scale, PANEL_COLOR, guiScale)
-        }
-        layout.popup?.let { popup ->
-            boxes += blurBox(popup.rect, 11.5f * popup.scale, POPUP_COLOR, guiScale)
         }
         return boxes
     }
@@ -215,7 +237,7 @@ object AsteriaClickGui {
 
         layout.popup?.let { popup ->
             if (contains(mouseX, mouseY, popup.rect)) {
-                popup.rows.firstOrNull { contains(mouseX, mouseY, it.rect) }?.let { row ->
+                popup.rows.firstOrNull { contains(mouseX, mouseY, popup.contentRect) && contains(mouseX, mouseY, it.rect) }?.let { row ->
                     activateSetting(popup.module, row, mouseX, button, popup.scale)
                 }
                 return true
@@ -225,20 +247,25 @@ object AsteriaClickGui {
         layout.panels.asSequence().filter { panel ->
             contains(mouseX, mouseY, panelContentRect(panel, layout.frame.scale))
         }.flatMap { it.rows.asSequence() }.firstOrNull {
-            contains(mouseX, mouseY, it.rect)
+            contains(mouseX, mouseY, it.headerRect)
         }?.let { row ->
-            val settingsClick = (button == GLFW.GLFW_MOUSE_BUTTON_LEFT || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) &&
-                settingsIconRect(row, layout.frame.scale)?.let { contains(mouseX, mouseY, it) } == true
+            val settingsClick = hasConfigurableSettings(row.module) && button == GLFW.GLFW_MOUSE_BUTTON_RIGHT
             if (settingsClick) {
                 iconClickAnimations[row.module.name] = IconClickAnimation(now())
-                if (popupModule === row.module) {
+                if (row.module === ModuleManager.cosmetics) {
+                    popupExpanded = false
                     popupModule = null
+                    expandedEnum = null
+                    CosmeticsMenu.openFromClickGui()
+                    return true
+                }
+                if (popupModule === row.module && popupExpanded) {
+                    popupExpanded = false
                     expandedEnum = null
                 } else {
                     popupModule = row.module
+                    popupExpanded = true
                     expandedEnum = null
-                    popupAnchorX = row.rect.x + row.rect.width + 5.0f * layout.frame.scale
-                    popupAnchorY = row.rect.y
                     popupScroll.position = 0.0f
                     popupScroll.target = 0.0f
                     popupScroll.updatedAt = now()
@@ -251,7 +278,7 @@ object AsteriaClickGui {
         }
 
         if (layout.panels.none { contains(mouseX, mouseY, it.rect) }) {
-            popupModule = null
+            popupExpanded = false
             expandedEnum = null
         }
         return true
@@ -272,15 +299,11 @@ object AsteriaClickGui {
         val mouseX = mc.mouseHandler.getScaledXPos(mc.window).toFloat()
         val mouseY = mc.mouseHandler.getScaledYPos(mc.window).toFloat()
         val layout = layout()
-        layout.popup?.takeIf { contains(mouseX, mouseY, it.rect) }?.let { popup ->
-            popupScroll.target = (
-                popupScroll.target + if (vertical < 0.0) POPUP_SCROLL_AMOUNT else -POPUP_SCROLL_AMOUNT
-            ).coerceIn(0.0f, popup.maxScroll)
-            return true
-        }
         layout.panels.firstOrNull { contains(mouseX, mouseY, it.rect) }?.let { panel ->
             val visibleRows = visibleModuleRows()
-            val maxOffset = max(0, ModuleManager.modulesIn(panel.category).size - visibleRows)
+            val modules = ModuleManager.modulesIn(panel.category)
+            val expandedRows = ceil(modules.sumOf { (moduleExpansionProgress(it) * inlineSettingsHeight(it)).toDouble() }.toFloat() / ROW_STEP).toInt()
+            val maxOffset = max(0, modules.size + expandedRows - visibleRows)
             val state = categoryScrolls.getOrPut(panel.category) { ScrollAnimation(0.0f, 0.0f, now()) }
             state.target = (state.target + if (vertical < 0.0) 1.0f else -1.0f).coerceIn(0.0f, maxOffset.toFloat())
             return true
@@ -297,7 +320,7 @@ object AsteriaClickGui {
         layout.panels.forEach { panel ->
             val content = panelContentRect(panel, layout.frame.scale)
             val rowBoxes = moduleRowBoxes(panel, layout.frame.scale, animationProgress())
-            drawOutsideRect(graphics, content, layout.popup?.rect) {
+            drawInScissor(graphics, content) {
                 rowBoxes.forEach { GuiBoxUtil.draw(graphics, it) }
             }
         }
@@ -305,7 +328,6 @@ object AsteriaClickGui {
         drawBaseText(graphics, layout)
         layout.popup?.let { popup ->
             graphics.nextStratum()
-            drawPopupShadow(graphics, popup)
             popupBoxes(layout).forEach { GuiBoxUtil.draw(graphics, it) }
             graphics.nextStratum()
             drawPopupText(graphics, popup, animationProgress())
@@ -341,32 +363,44 @@ object AsteriaClickGui {
                 PANEL_HEIGHT * scale,
             )
             val allModules = ModuleManager.modulesIn(category)
-            val maxOffset = max(0, allModules.size - visibleModuleRows())
+            val expansions = allModules.associateWith(::moduleExpansionProgress)
+            val settingsHeights = allModules.associateWith(::inlineSettingsHeight)
+            val expandedRows = ceil(allModules.sumOf { ((expansions[it] ?: 0.0f) * (settingsHeights[it] ?: 0.0f)).toDouble() }.toFloat() / ROW_STEP).toInt()
+            val maxOffset = max(0, allModules.size + expandedRows - visibleModuleRows())
             val scroll = scrollPosition(category, maxOffset)
             val contentTop = panel.y + HEADER_HEIGHT * scale
             val contentBottom = panel.y + (PANEL_HEIGHT - PANEL_PADDING) * scale
-            val rows = allModules.mapIndexed { rowIndex, module ->
-                ModuleRow(
-                    module,
-                    Rect(
-                        panel.x + PANEL_PADDING * scale,
-                        contentTop + (rowIndex - scroll) * ROW_STEP * scale,
-                        (PANEL_WIDTH - PANEL_PADDING * 2.0f) * scale,
-                        ROW_HEIGHT * scale,
-                    ),
+            var rowY = contentTop - scroll * ROW_STEP * scale
+            val rows = allModules.map { module ->
+                val expansion = expansions[module] ?: 0.0f
+                val rowHeight = (ROW_HEIGHT + (settingsHeights[module] ?: 0.0f) * expansion) * scale
+                val rowRect = Rect(
+                    panel.x + PANEL_PADDING * scale,
+                    rowY,
+                    (PANEL_WIDTH - PANEL_PADDING * 2.0f) * scale,
+                    rowHeight,
                 )
+                val row = ModuleRow(module, rowRect, rowRect.copy(height = ROW_HEIGHT * scale), expansion)
+                rowY += rowHeight + ROW_GAP * scale
+                row
             }.filter { row -> row.rect.y + row.rect.height > contentTop && row.rect.y < contentBottom }
             CategoryPanel(category, panel, rows)
         }
-        val popup = popupModule?.let { popupLayout(it, frame) }
+        val popup = popupModule?.let { module ->
+            panels.asSequence().flatMap { panel -> panel.rows.asSequence().map { panel to it } }
+                .firstOrNull { (_, row) -> row.module === module && row.expansion > 0.001f }
+                ?.let { (panel, row) -> popupLayout(module, row, panel, frame) }
+        }
         return Layout(frame, profile, panels, popup)
     }
 
-    private fun popupLayout(module: Module, frame: Frame): Popup {
-        val scale = frame.scale * POPUP_SCALE
+    private fun popupLayout(module: Module, moduleRow: ModuleRow, panel: CategoryPanel, frame: Frame): Popup {
+        val scale = frame.scale
+        val expansion = moduleRow.expansion
         val targets = settingTargets(module)
-        val width = POPUP_WIDTH * scale
-        val height = POPUP_HEIGHT * scale
+        val width = moduleRow.rect.width
+        val targetHeight = inlineSettingsHeight(module)
+        val height = targetHeight * expansion * scale
         val rowSteps = targets.map(::popupRowStep)
         val joinedOptionGap = targets.indices.sumOf { index ->
             val target = targets[index]
@@ -376,25 +410,25 @@ object AsteriaClickGui {
                 0.0
             }
         }.toFloat()
-        val viewportHeight = POPUP_HEIGHT - POPUP_CONTENT_PADDING_Y * 2.0f
+        val viewportHeight = (targetHeight - POPUP_CONTENT_PADDING_Y * 2.0f).coerceAtLeast(0.0f)
         val contentHeight = (rowSteps.sum() - joinedOptionGap).coerceAtLeast(0.0f)
         val maxScroll = (contentHeight - viewportHeight).coerceAtLeast(0.0f)
         val scroll = popupScrollPosition(maxScroll)
-        val mc = Minecraft.getInstance()
-        var x = popupAnchorX
-        if (x + width > mc.window.guiScaledWidth - 6.0f) {
-            x = popupAnchorX - width - (PANEL_WIDTH + 10.0f) * frame.scale
-        }
-        x = x.coerceIn(6.0f, (mc.window.guiScaledWidth - width - 6.0f).coerceAtLeast(6.0f))
-        val y = popupAnchorY.coerceIn(6.0f, (mc.window.guiScaledHeight - height - 6.0f).coerceAtLeast(6.0f))
+        val x = moduleRow.rect.x
+        val y = moduleRow.headerRect.y + moduleRow.headerRect.height
         val rect = Rect(x, y, width, height)
+        val panelContent = panelContentRect(panel, frame.scale)
+        val visibleTop = max(y, panelContent.y)
+        val visibleBottom = min(y + height, panelContent.y + panelContent.height)
         val contentRect = Rect(
             x + POPUP_HORIZONTAL_PADDING * scale,
-            y + POPUP_CONTENT_PADDING_Y * scale,
+            max(visibleTop, y + POPUP_CONTENT_PADDING_Y * scale),
             width - POPUP_HORIZONTAL_PADDING * 2.0f * scale,
-            viewportHeight * scale,
+            (visibleBottom - max(visibleTop, y + POPUP_CONTENT_PADDING_Y * scale) - POPUP_CONTENT_PADDING_Y * scale).coerceAtLeast(0.0f),
         )
-        var rowY = contentRect.y - scroll * scale
+        // Keep setting coordinates attached to the expanded module. The contentRect only
+        // clips them at panel edges; it must never become their layout origin while scrolling.
+        var rowY = y + POPUP_CONTENT_PADDING_Y * scale - scroll * scale
         val rows = targets.mapIndexed { index, target ->
             val step = rowSteps[index]
             SettingRow(
@@ -416,7 +450,8 @@ object AsteriaClickGui {
                 rowY += (if (joinsExpandedOptions) step - POPUP_ROW_GAP else step) * scale
             }
         }
-        return Popup(module, rect, contentRect, rows, maxScroll, scale)
+        val contentAlpha = easeOut(((expansion - 0.12f) / 0.88f).coerceIn(0.0f, 1.0f))
+        return Popup(module, rect, contentRect, rows, maxScroll, scale, contentAlpha)
     }
 
     private fun popupRowStep(target: SettingTarget): Float {
@@ -455,6 +490,21 @@ object AsteriaClickGui {
         return targets
     }
 
+    private fun inlineSettingsHeight(module: Module): Float {
+        val targets = settingTargets(module)
+        if (targets.isEmpty()) return 0.0f
+        val rowSteps = targets.map(::popupRowStep)
+        val joinedOptionGap = targets.indices.sumOf { index ->
+            val target = targets[index]
+            if (target.enumOptionIndex == null && target.setting is EnumSetting<*> && targets.getOrNull(index + 1)?.enumOptionIndex != null) {
+                POPUP_ROW_GAP.toDouble()
+            } else {
+                0.0
+            }
+        }.toFloat()
+        return (rowSteps.sum() - joinedOptionGap + POPUP_CONTENT_PADDING_Y * 2.0f).coerceAtLeast(0.0f)
+    }
+
     private fun layoutBoxes(layout: Layout): List<GuiBoxUtil.Box> {
         val boxes = mutableListOf<GuiBoxUtil.Box>()
         val scale = layout.frame.scale
@@ -478,46 +528,9 @@ object AsteriaClickGui {
         val alpha = animationProgress()
         layout.popup?.let { popup ->
             val scale = popup.scale
-            if (!ModuleManager.postProcessing.enabled) {
-                AsteriaGuiRenderer.rect(boxes, popup.rect.x, popup.rect.y, popup.rect.width, popup.rect.height, 11.5f * scale, withAlpha(POPUP_COLOR, alpha))
-            } else {
-                AsteriaGuiRenderer.rect(boxes, popup.rect.x, popup.rect.y, popup.rect.width, popup.rect.height, 11.5f * scale, withAlpha(POPUP_FOREGROUND_COLOR, alpha))
-            }
             val contentBoxStart = boxes.size
             popup.rows.forEachIndexed { index, row ->
-                val rowAlpha = alpha * row.target.visibility
-                val enumSetting = row.target.setting as? EnumSetting<*>
-                val isEnumOption = row.target.enumOptionIndex != null
-                if (enumSetting != null && !isEnumOption) {
-                    val lastOption = popup.rows
-                        .drop(index + 1)
-                        .takeWhile { candidate ->
-                            candidate.target.enumOptionIndex != null && candidate.target.setting === enumSetting
-                        }
-                        .lastOrNull()
-                    val groupBottom = lastOption?.let {
-                        it.rect.y + it.rect.height + POPUP_ROW_GAP * it.target.visibility * scale
-                    } ?: (row.rect.y + row.rect.height)
-                    AsteriaGuiRenderer.rect(
-                        boxes,
-                        row.rect.x,
-                        row.rect.y,
-                        row.rect.width,
-                        groupBottom - row.rect.y,
-                        POPUP_ENUM_RADIUS * scale,
-                        withAlpha(POPUP_ROW_COLOR, alpha),
-                    )
-                } else if (!isEnumOption) {
-                    AsteriaGuiRenderer.rect(
-                        boxes,
-                        row.rect.x,
-                        row.rect.y,
-                        row.rect.width,
-                        row.rect.height,
-                        5.5f * scale,
-                        withAlpha(POPUP_ROW_COLOR, rowAlpha),
-                    )
-                }
+                val rowAlpha = alpha * popup.contentAlpha * row.target.visibility
                 if (isSelectedEnumOption(row.target)) {
                     val isLastOption = isLastEnumOption(popup, index)
                     val selectedHeight = row.rect.height + POPUP_ROW_GAP * row.target.visibility * scale
@@ -541,33 +554,34 @@ object AsteriaClickGui {
                 val setting = row.target.setting
                 val checked = row.target.option?.value ?: (setting as? BooleanSetting)?.value
                 if (checked != null) {
-                    val switchW = 19.5f * scale
-                    val switchH = 11.5f * scale
+                    val switchW = 18.0f * scale
+                    val switchH = 10.5f * scale
                     drawCircularSwitch(
                         boxes,
                         "setting:${popup.module.name}:${row.target.label}",
-                        row.rect.x + row.rect.width - switchW - 6.0f * scale,
+                        row.rect.x + row.rect.width - switchW,
                         row.rect.y + (row.rect.height - switchH) * 0.5f,
                         switchW,
                         switchH,
                         checked,
-                        alpha,
+                        alpha * popup.contentAlpha,
                     )
                 }
                 if (setting is FloatSetting || setting is IntSetting) {
-                    val percent = numericPercent(setting)
-                    val trackX = row.rect.x + 7.0f * scale
-                    val trackW = row.rect.width - 14.0f * scale
+                    val percent = smoothNumericPercent("${popup.module.name}:${setting.name}", numericPercent(setting))
+                    val trackX = row.rect.x
+                    val trackW = row.rect.width
                     AsteriaGuiRenderer.range(
                         boxes,
                         trackX,
                         row.rect.y + row.rect.height - 3.5f * scale,
                         trackW,
-                        1.5f * scale,
-                        5.0f * scale,
+                        2.5f * scale,
+                        5.5f * scale,
                         percent,
-                        withAlpha(ACCENT, alpha),
-                        withAlpha(0xFF303030.toInt(), alpha),
+                        withAlpha(ACCENT, alpha * popup.contentAlpha),
+                        withAlpha(0xFF303030.toInt(), alpha * popup.contentAlpha),
+                        withAlpha(WHITE, alpha * popup.contentAlpha),
                     )
                 }
             }
@@ -589,8 +603,6 @@ object AsteriaClickGui {
         val cursorX = mouseX()
         val cursorY = mouseY()
         panel.rows.forEach { row ->
-            val hovered = contains(cursorX, cursorY, row.rect)
-            val hover = hoverProgress("module:${row.module.name}", hovered, ROW_HOVER_ANIMATION_MS)
             AsteriaGuiRenderer.rect(
                 boxes,
                 row.rect.x,
@@ -600,17 +612,6 @@ object AsteriaClickGui {
                 MODULE_ROW_RADIUS * scale,
                 withAlpha(ROW_COLOR, alpha),
             )
-            if (hover > 0.001f) {
-                AsteriaGuiRenderer.rect(
-                    boxes,
-                    row.rect.x,
-                    row.rect.y,
-                    row.rect.width,
-                    row.rect.height,
-                    MODULE_ROW_RADIUS * scale,
-                    withAlpha(ROW_HOVER_COLOR, alpha * hover),
-                )
-            }
             settingsIconRect(row, scale)?.let { iconRect ->
                 val iconHover = hoverProgress("settings:${row.module.name}", contains(cursorX, cursorY, iconRect), ICON_HOVER_ANIMATION_MS)
                 if (iconHover > 0.001f) {
@@ -630,8 +631,8 @@ object AsteriaClickGui {
             drawCircularSwitch(
                 boxes,
                 "module:${row.module.name}",
-                row.rect.x + row.rect.width - switchW - 6.5f * scale,
-                row.rect.y + (row.rect.height - switchH) * 0.5f,
+                row.headerRect.x + row.headerRect.width - switchW - 6.5f * scale,
+                row.headerRect.y + (row.headerRect.height - switchH) * 0.5f,
                 switchW,
                 switchH,
                 row.module.enabled,
@@ -654,7 +655,7 @@ object AsteriaClickGui {
 
         layout.panels.forEach { panel ->
             val header = Rect(panel.rect.x, panel.rect.y, panel.rect.width, HEADER_HEIGHT * scale)
-            drawOutsideRect(graphics, header, layout.popup?.rect) {
+            drawInScissor(graphics, header) {
                 FontRenderer.drawCentered(
                     graphics,
                     Face.SfRegular,
@@ -666,10 +667,10 @@ object AsteriaClickGui {
                 )
             }
             val content = panelContentRect(panel, scale)
-            drawOutsideRect(graphics, content, layout.popup?.rect) {
+            drawInScissor(graphics, content) {
                 panel.rows.forEach { row ->
-                    val labelX = row.rect.x + 8.0f * scale
-                    val labelY = row.rect.y + 7.5f * scale
+                    val labelX = row.headerRect.x + 8.0f * scale
+                    val labelY = row.headerRect.y + 7.5f * scale
                     val labelSize = 9.0f * scale
                     text(graphics, Face.SfRegular, row.module.name, labelX, labelY, labelSize, withAlpha(WHITE, alpha))
                     settingsIconRect(row, scale)?.let { iconRect ->
@@ -701,14 +702,14 @@ object AsteriaClickGui {
         )
         popup.rows.forEachIndexed { index, row ->
                 val target = row.target
-                val rowAlpha = alpha * target.visibility
+                val rowAlpha = alpha * popup.contentAlpha * target.visibility
                 val color = when {
                     target.bind && bindingModule === popup.module -> ACCENT
                     isSelectedEnumOption(target) -> WHITE
                     target.enumOptionIndex != null -> TEXT_MUTED
                     else -> WHITE
                 }
-                val labelSize = 7.0f * popupScale
+                val labelSize = 8.5f * popupScale
                 val optionVisualHeight = if (target.enumOptionIndex != null) {
                     row.rect.height + POPUP_ROW_GAP * target.visibility * popupScale
                 } else {
@@ -720,11 +721,7 @@ object AsteriaClickGui {
                     (optionVisualHeight - labelSize) * 0.5f
                 }
                 val enumSetting = target.setting as? EnumSetting<*>
-                val labelX = row.rect.x + if (enumSetting != null && target.enumOptionIndex == null) {
-                    POPUP_ENUM_HORIZONTAL_PADDING * popupScale
-                } else {
-                    7.0f * popupScale
-                }
+                val labelX = row.rect.x
                 val enumHasVisibleOptions = enumSetting != null && popup.rows.any { candidate ->
                     candidate.target.enumOptionIndex != null && candidate.target.setting === enumSetting
                 }
@@ -736,14 +733,15 @@ object AsteriaClickGui {
                 text(graphics, Face.SfRegular, label, labelX, labelY, labelSize, withAlpha(color, rowAlpha))
                 val value = settingValue(popup.module, target)
                 if (value != null && target.option == null && target.setting !is BooleanSetting) {
-                    textRight(graphics, value, row.rect.x + row.rect.width - 7.0f * popupScale, labelY, 6.5f * popupScale, withAlpha(if (target.bind) TEXT_MUTED else ACCENT, rowAlpha))
+                    val valueColor = if (target.setting is FloatSetting || target.setting is IntSetting) WHITE else if (target.bind) TEXT_MUTED else ACCENT
+                    textRight(graphics, value, row.rect.x + row.rect.width, labelY, 8.0f * popupScale, withAlpha(valueColor, rowAlpha))
                 }
                 if (enumSetting != null && target.enumOptionIndex == null) {
                     val iconSize = 8.5f * popupScale
                     MsdfIconRenderer.draw(
                         graphics,
                         FILTER_ICON,
-                        row.rect.x + row.rect.width - iconSize - POPUP_ENUM_HORIZONTAL_PADDING * popupScale,
+                        row.rect.x + row.rect.width - iconSize,
                         row.rect.y + (row.rect.height - iconSize) * 0.5f,
                         iconSize,
                         iconSize,
@@ -792,10 +790,10 @@ object AsteriaClickGui {
             is EnumSetting<*> -> expandedEnum = if (expandedEnum === setting) null else setting
             is FloatSetting, is IntSetting -> {
                 val trackRect = Rect(
-                    row.rect.x + 7.0f * scale,
+                    row.rect.x,
                     row.rect.y + row.rect.height - 3.5f * scale,
-                    row.rect.width - 14.0f * scale,
-                    1.5f * scale,
+                    row.rect.width,
+                    2.5f * scale,
                 )
                 setNumeric(setting, (mouseX - trackRect.x) / trackRect.width)
                 activeNumeric = setting
@@ -824,6 +822,17 @@ object AsteriaClickGui {
         is FloatSetting -> ((setting.value - setting.min) / (setting.max - setting.min)).coerceIn(0.0f, 1.0f)
         is IntSetting -> ((setting.value - setting.min).toFloat() / (setting.max - setting.min).toFloat()).coerceIn(0.0f, 1.0f)
         else -> 0.0f
+    }
+
+    private fun smoothNumericPercent(key: String, target: Float): Float {
+        val time = now()
+        val state = numericAnimations.getOrPut(key) { NumericAnimation(target, time) }
+        val elapsed = (time - state.updatedAt).coerceIn(0L, 100L).toFloat()
+        val response = 1.0f - exp(-elapsed / 55.0f)
+        state.value = lerp(state.value, target, response)
+        if (kotlin.math.abs(state.value - target) < 0.0005f) state.value = target
+        state.updatedAt = time
+        return state.value
     }
 
     private fun settingValue(module: Module, target: SettingTarget): String? = when {
@@ -967,6 +976,16 @@ object AsteriaClickGui {
         return state.value
     }
 
+    private fun moduleExpansionProgress(module: Module): Float = easeOut(
+        hoverProgress(
+            "module-settings:${module.name}",
+            popupExpanded && popupModule === module,
+            INLINE_EXPANSION_ANIMATION_MS,
+        )
+    )
+
+    private fun easeOut(value: Float): Float = 1.0f - (1.0f - value) * (1.0f - value) * (1.0f - value)
+
     private fun scrollPosition(category: ModuleCategory, maxOffset: Int): Float {
         val currentTime = now()
         val state = categoryScrolls.getOrPut(category) { ScrollAnimation(0.0f, 0.0f, currentTime) }
@@ -1084,20 +1103,32 @@ object AsteriaClickGui {
     private fun contains(x: Float, y: Float, rect: Rect): Boolean =
         x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height
 
+    private fun moduleSwitchRect(row: ModuleRow, scale: Float): Rect {
+        val width = 19.5f * scale
+        val height = 11.5f * scale
+        return Rect(
+            row.headerRect.x + row.headerRect.width - width - 6.5f * scale,
+            row.headerRect.y + (row.headerRect.height - height) * 0.5f,
+            width,
+            height,
+        )
+    }
+
     private fun settingsIconRect(row: ModuleRow, scale: Float): Rect? {
         if (!hasConfigurableSettings(row.module)) return null
         val size = 10.5f * scale
         val switchWidth = 19.5f * scale
-        val switchX = row.rect.x + row.rect.width - switchWidth - 6.5f * scale
+        val switchX = row.headerRect.x + row.headerRect.width - switchWidth - 6.5f * scale
         return Rect(
             switchX - size - 2.0f * scale - 2.0f,
-            row.rect.y + (row.rect.height - size) * 0.5f,
+            row.headerRect.y + (row.headerRect.height - size) * 0.5f,
             size,
             size,
         )
     }
 
-    private fun hasConfigurableSettings(module: Module): Boolean = module.settings.any { it.isVisible() }
+    private fun hasConfigurableSettings(module: Module): Boolean =
+        module === ModuleManager.cosmetics || module.settings.any { it.isVisible() }
 
     private fun mouseX(): Float = Minecraft.getInstance().mouseHandler.getScaledXPos(Minecraft.getInstance().window).toFloat()
 
