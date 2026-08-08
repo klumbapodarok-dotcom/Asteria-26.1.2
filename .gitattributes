@@ -1,0 +1,23 @@
+#
+# https://help.github.com/articles/dealing-with-line-endings/
+#
+# Linux start script should use lf
+/gradlew        text eol=lf
+
+# These are Windows script files and should use crlf
+*.bat           text eol=crlf
+
+# Source and resource files are inspected by contract tests using LF tokens.
+.gitattributes  text eol=lf
+.gitignore      text eol=lf
+*.md            text eol=lf
+*.java          text eol=lf
+*.kt            text eol=lf
+*.kts           text eol=lf
+*.json          text eol=lf
+*.properties    text eol=lf
+*.xml           text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.fsh           text eol=lf
+*.vsh           text eol=lf

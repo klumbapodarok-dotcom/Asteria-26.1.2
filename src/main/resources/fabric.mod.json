@@ -1,0 +1,50 @@
+{
+	"schemaVersion": 1,
+	"id": "asteria",
+	"version": "${version}",
+	"name": "Asteria",
+	"description": "Asteria client for Minecraft.",
+	"authors": [
+		"Asteria"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/asteria/icon.png",
+	"jars": [
+		{
+			"file": "META-INF/jars/figura-0.1.6-port.1+26.1.2-fabric-mc.jar"
+		}
+	],
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			{
+				"value": "asteria.top.Asteria",
+				"adapter": "kotlin"
+			}
+		],
+		"client": [
+			{
+				"value": "asteria.top.client.AsteriaClient",
+				"adapter": "kotlin"
+			}
+		]
+	},
+	"mixins": [
+		"asteria.mixins.json",
+		{
+			"config": "asteria.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*",
+		"fabric-language-kotlin": "*"
+	}
+}

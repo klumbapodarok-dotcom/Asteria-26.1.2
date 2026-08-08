@@ -1,0 +1,44 @@
+{
+	"required": true,
+	"package": "asteria.top.client.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"ExampleClientMixin",
+		"AvatarRendererMixin",
+		"GuiMixin",
+		"GuiRendererMixin",
+		"ItemInHandRendererMixin",
+		"KeyboardInputMixin",
+		"KeyboardHandlerMixin",
+		"MultiPlayerGameModeMixin",
+		"LivingEntityMoveFixMixin",
+		"LocalPlayerMixin",
+		"LivingEntityRendererMixin",
+		"LivingEntityRenderStateMixin",
+		"LevelRendererMixin",
+		"ConnectionMixin",
+		"ConnectionIncomingMixin",
+		"MouseHandlerMixin",
+		"AbstractArrowAccessor",
+		"MultiPlayerGameModeAccessor",
+		"ItemCooldownsAccessor",
+		"CooldownInstanceAccessor",
+		"RotationMovementMixin",
+		"ChatScreenMixin",
+		"FontMixin",
+		"ChatComponentMixin",
+		"RenderTypeMixin",
+		"ItemFeatureRendererMixin",
+		"ClientClockManagerMixin",
+		"FogRendererMixin",
+		"EntityNameTagMixin",
+		"LivingEntityNameTagMixin",
+		"AvatarNameTagMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}
