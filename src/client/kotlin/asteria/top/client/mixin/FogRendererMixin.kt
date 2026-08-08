@@ -1,5 +1,6 @@
 package asteria.top.client.mixin
 
+import asteria.top.client.gui.hud.HudStyle
 import asteria.top.client.module.ModuleManager
 import asteria.top.client.module.modules.visual.AmbienceModule
 import net.minecraft.client.Camera
@@ -7,6 +8,9 @@ import net.minecraft.client.DeltaTracker
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.renderer.fog.FogData
 import net.minecraft.client.renderer.fog.FogRenderer
+import net.minecraft.world.effect.MobEffects
+import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.level.material.FogType
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.injection.At
 import org.spongepowered.asm.mixin.injection.Inject
@@ -26,31 +30,43 @@ class FogRendererMixin {
         val ambience = ModuleManager.ambience
         if (!ambience.enabled) return
 
-        val data = cir.returnValue
         val mode = ambience.fogMode.value
+        if (mode == AmbienceModule.FogMode.NOTHING || shouldKeepVanillaFog(camera)) return
 
-        if (mode != AmbienceModule.FogMode.NOTHING) {
-            val renderDistanceBlocks = renderDistance * 16f
-            if (mode == AmbienceModule.FogMode.CLEAR) {
-                val far = renderDistanceBlocks * 8f + 512f
-                data.renderDistanceStart = far
-                data.renderDistanceEnd = far
-                data.environmentalStart = far
-                data.environmentalEnd = far
-            } else {
-                val start = renderDistanceBlocks * ambience.fogStart.value
-                val end = renderDistanceBlocks * ambience.fogEnd.value
-                data.renderDistanceStart = start
-                data.renderDistanceEnd = end
-                data.environmentalStart = start
-                data.environmentalEnd = end
-            }
+        val data = cir.returnValue
+        if (mode == AmbienceModule.FogMode.CLEAR) {
+            val far = renderDistance * 16.0f * 4.0f
+            applyDistances(data, far, far)
+            return
         }
 
-        if (ambience.fogColorEnabled.value) {
-            data.color.x = ambience.fogColorRed.value / 255.0f
-            data.color.y = ambience.fogColorGreen.value / 255.0f
-            data.color.z = ambience.fogColorBlue.value / 255.0f
+        val start = ambience.fogStart.value * 64.0f
+        val end = maxOf(ambience.fogEnd.value * 128.0f, start + 10.0f)
+        applyDistances(data, start, end)
+
+        val color = if (ambience.fogColorMode.value == AmbienceModule.FogColorMode.INTERFACE) {
+            HudStyle.ACCENT
+        } else {
+            (ambience.fogColorRed.value shl 16) or
+                (ambience.fogColorGreen.value shl 8) or
+                ambience.fogColorBlue.value
         }
+        data.color.x = ((color shr 16) and 0xFF) / 255.0f
+        data.color.y = ((color shr 8) and 0xFF) / 255.0f
+        data.color.z = (color and 0xFF) / 255.0f
+    }
+
+    private fun applyDistances(data: FogData, start: Float, end: Float) {
+        data.renderDistanceStart = start
+        data.renderDistanceEnd = end
+        data.environmentalStart = start
+        data.environmentalEnd = end
+    }
+
+    private fun shouldKeepVanillaFog(camera: Camera): Boolean {
+        val fluid = camera.fluidInCamera
+        if (fluid == FogType.WATER || fluid == FogType.LAVA) return true
+        val entity = camera.entity()
+        return entity is LivingEntity && entity.hasEffect(MobEffects.BLINDNESS)
     }
 }

@@ -33,7 +33,30 @@ class AmbienceModule : Module(
         OVERRIDE("Переопределить"),
     }
 
+    enum class FogColorMode(val label: String) {
+        INTERFACE("Интерфейс"),
+        CUSTOM("Свой"),
+    }
+
+    enum class SkyMode(val label: String, val shaderMode: Int) {
+        NORMAL("Обычное", -1),
+        AURORA("Aurora", 0),
+        FOG_BLUR("FogBlur", 2),
+        PLASMA("Plasma", 3),
+        SAKURA("Sakura", 4),
+        SUMMER("Summer", 5),
+        BLACK_HOLE("BlackHole", 6),
+        NEBULA("Nebula", 7),
+    }
+
     val timeMode = setting(EnumSetting("Время", TimeMode.entries.toTypedArray(), TimeMode.NONE) { it.label })
+    val skyMode = setting(EnumSetting("Небо", SkyMode.entries.toTypedArray(), SkyMode.NORMAL) { it.label })
+    val skyQuality = setting(
+        IntSetting("Качество", 2, 1, 3, 1).visibleWhen { skyMode.value != SkyMode.NORMAL }
+    )
+    val showStars = setting(
+        BooleanSetting("Звёзды", true).visibleWhen { skyMode.value != SkyMode.NORMAL }
+    )
     val fogMode = setting(EnumSetting("Туман", FogMode.entries.toTypedArray(), FogMode.NOTHING) { it.label })
     val fogStart = setting(
         FloatSetting("Начало тумана", 0.5f, 0.1f, 1.5f, 0.1f).visibleWhen { fogMode.value == FogMode.OVERRIDE }
@@ -41,16 +64,24 @@ class AmbienceModule : Module(
     val fogEnd = setting(
         FloatSetting("Конец тумана", 1.0f, 0.1f, 1.5f, 0.1f).visibleWhen { fogMode.value == FogMode.OVERRIDE }
     )
-    val fogColorEnabled = setting(BooleanSetting("Цвет тумана", false))
+    val fogColorMode = setting(
+        EnumSetting("Цвет", FogColorMode.entries.toTypedArray(), FogColorMode.INTERFACE) { it.label }
+            .visibleWhen { fogMode.value == FogMode.OVERRIDE }
+    )
     val fogColorRed = setting(
-        IntSetting("Красный", 200, 0, 255, 1).visibleWhen { fogColorEnabled.value }
+        IntSetting("Красный", 128, 0, 255, 1)
+            .visibleWhen { fogMode.value == FogMode.OVERRIDE && fogColorMode.value == FogColorMode.CUSTOM }
     )
     val fogColorGreen = setting(
-        IntSetting("Зелёный", 220, 0, 255, 1).visibleWhen { fogColorEnabled.value }
+        IntSetting("Зелёный", 115, 0, 255, 1)
+            .visibleWhen { fogMode.value == FogMode.OVERRIDE && fogColorMode.value == FogColorMode.CUSTOM }
     )
     val fogColorBlue = setting(
-        IntSetting("Синий", 255, 0, 255, 1).visibleWhen { fogColorEnabled.value }
+        IntSetting("Синий", 225, 0, 255, 1)
+            .visibleWhen { fogMode.value == FogMode.OVERRIDE && fogColorMode.value == FogColorMode.CUSTOM }
     )
+
+    fun shouldRenderSky(): Boolean = enabled && skyMode.value != SkyMode.NORMAL
 
     fun forcedTimeTicks(clock: Holder<WorldClock>): Long? {
         if (!enabled || timeMode.value == TimeMode.NONE) return null

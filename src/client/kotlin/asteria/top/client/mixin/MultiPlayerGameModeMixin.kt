@@ -1,5 +1,6 @@
 package asteria.top.client.mixin
 
+import asteria.top.client.module.ModuleManager
 import asteria.top.client.module.modules.player.FakePlayerModule
 import net.minecraft.client.multiplayer.MultiPlayerGameMode
 import net.minecraft.world.entity.Entity
@@ -17,5 +18,10 @@ abstract class MultiPlayerGameModeMixin {
             player.resetAttackStrengthTicker()
             ci.cancel()
         }
+    }
+
+    @Inject(method = ["attack"], at = [At("RETURN")])
+    private fun asteriaSpawnAttackParticles(player: Player, target: Entity, ci: CallbackInfo) {
+        ModuleManager.particles.onAttack(target)
     }
 }

@@ -20,6 +20,7 @@ import asteria.top.client.module.modules.visual.ChamsModule
 import asteria.top.client.module.modules.visual.NameTagsModule
 import asteria.top.client.module.modules.visual.LiquidFogModule
 import asteria.top.client.module.modules.visual.PostProcessingModule
+import asteria.top.client.module.modules.visual.ParticlesModule
 import asteria.top.client.module.modules.visual.PredictionsModule
 import asteria.top.client.module.modules.visual.RotationViewModule
 import asteria.top.client.module.modules.visual.TargetEspModule
@@ -37,6 +38,7 @@ object ModuleManager {
     val rotationView = RotationViewModule()
     val nameTags = NameTagsModule()
     val predictions = PredictionsModule()
+    val particles = ParticlesModule()
     val trajectories = TrajectoriesModule()
     val trapEsp = TrapEspModule()
     val killaura = KillauraModule()
@@ -76,6 +78,7 @@ object ModuleManager {
         arrows,
         nameTags,
         predictions,
+        particles,
         trajectories,
         trapEsp,
         test1,

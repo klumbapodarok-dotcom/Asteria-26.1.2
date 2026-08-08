@@ -27,6 +27,7 @@ object AsteriaClient : ClientModInitializer {
 		ClientTickEvents.START_CLIENT_TICK.register(ClientTickEvents.StartTick { ModuleManager.fakePlayer.tick() })
 		ClientTickEvents.START_CLIENT_TICK.register(ClientTickEvents.StartTick { ModuleManager.fakeLag.tick() })
 		ClientTickEvents.START_CLIENT_TICK.register(ClientTickEvents.StartTick { ModuleManager.trapEsp.tick() })
+		ClientTickEvents.START_CLIENT_TICK.register(ClientTickEvents.StartTick { ModuleManager.particles.tick() })
 		ClientTickEvents.START_CLIENT_TICK.register(ClientTickEvents.StartTick { HandShaderRenderer.updateUniform() })
 		ClientTickEvents.START_CLIENT_TICK.register(ClientTickEvents.StartTick { ChamsRenderer.updateUniform() })
 
@@ -40,6 +41,7 @@ object AsteriaClient : ClientModInitializer {
 		LevelRenderEvents.BEFORE_GIZMOS.register { context -> ModuleManager.blockOverlay.onRender(context) }
 
 		LevelRenderEvents.END_MAIN.register { context -> ModuleManager.targetEsp.renderGizmos(context) }
+		LevelRenderEvents.END_MAIN.register { context -> ModuleManager.particles.render(context) }
 		LevelRenderEvents.END_MAIN.register { context -> ModuleManager.liquidFog.render(context) }
 	}
 }
