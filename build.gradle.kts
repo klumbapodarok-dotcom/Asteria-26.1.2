@@ -2,7 +2,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.zip.ZipFile
 import java.net.URLClassLoader
 
-val bundledFiguraJar = layout.projectDirectory.file("libs/figura-0.1.6-port.1+26.1.2-fabric-mc.jar")
+val bundledFiguraJar = layout.projectDirectory.file("libs/figura-0.1.6-port.4+26.1.2-fabric-mc.jar")
 
 plugins {
 	id("net.fabricmc.fabric-loom")

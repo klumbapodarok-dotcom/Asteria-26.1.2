@@ -10,6 +10,7 @@ import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.textures.FilterMode
 import asteria.top.client.gui.AsteriaOverlay
 import asteria.top.client.gui.AsteriaClickGui
+import asteria.top.client.gui.CosmeticsMenu
 import asteria.top.client.gui.AsteriaClickGui.PANEL_CORNER_RADIUS
 import asteria.top.client.gui.HudOverlay
 import asteria.top.client.gui.hud.NotificationManager
@@ -117,7 +118,7 @@ object DoubleKawaseBlurRenderer {
         // Do not consume a blur boundary created by a vanilla Screen. That
         // boundary must run through GameRenderer.processBlurEffect().
         if (Minecraft.getInstance().screen != null) return false
-        if (!AsteriaClickGui.shouldRender()) return false
+        if (!AsteriaClickGui.shouldRender() && !CosmeticsMenu.shouldRender()) return false
         // Consume Minecraft's blur boundary even when the module is disabled;
         // in that case ClickGUI uses its normal non-blurred panel fills.
         if (!ModuleManager.postProcessing.enabled) return true
@@ -128,7 +129,7 @@ object DoubleKawaseBlurRenderer {
     private fun renderIfVisible(pass: Pass) {
         val postProcessing = ModuleManager.postProcessing
         if (!postProcessing.enabled) return
-        if (pass == Pass.CLICK_GUI && !AsteriaClickGui.shouldRender()) return
+        if (pass == Pass.CLICK_GUI && !AsteriaClickGui.shouldRender() && !CosmeticsMenu.shouldRender()) return
 
         val minecraft = Minecraft.getInstance()
         if (minecraft.level == null || minecraft.player == null) return
@@ -411,7 +412,7 @@ object DoubleKawaseBlurRenderer {
                 val hudBoxes = if (Minecraft.getInstance().options.hideGui) emptyList() else HudOverlay.blurBoxes(guiScale)
                 (hudBoxes + ModuleManager.nameTags.blurBoxes(guiScale) + ModuleManager.predictions.blurBoxes(guiScale) + ModuleManager.trapEsp.blurBoxes(guiScale)).take(MAX_BLUR_BOXES)
             }
-            Pass.CLICK_GUI -> AsteriaClickGui.blurBoxes(guiScale).take(MAX_BLUR_BOXES)
+            Pass.CLICK_GUI -> (AsteriaClickGui.blurBoxes(guiScale) + CosmeticsMenu.blurBoxes(guiScale)).take(MAX_BLUR_BOXES)
         }
     }
 
@@ -424,7 +425,9 @@ object DoubleKawaseBlurRenderer {
     private fun postProcessingOpacity(pass: Pass): Float {
         return when (pass) {
             Pass.HUD -> 1.0f
-            Pass.CLICK_GUI -> AnimationUtil.clamp01(AsteriaClickGui.animationProgress())
+            Pass.CLICK_GUI -> AnimationUtil.clamp01(
+                if (CosmeticsMenu.shouldRender()) CosmeticsMenu.animationProgress() else AsteriaClickGui.animationProgress()
+            )
         }
     }
 

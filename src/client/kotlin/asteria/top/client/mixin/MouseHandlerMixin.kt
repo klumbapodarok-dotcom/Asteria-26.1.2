@@ -1,6 +1,7 @@
 package asteria.top.client.mixin
 
 import asteria.top.client.gui.AsteriaClickGui
+import asteria.top.client.gui.CosmeticsMenu
 import asteria.top.client.gui.HudOverlay
 import net.minecraft.client.MouseHandler
 import net.minecraft.client.input.MouseButtonInfo
@@ -13,6 +14,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
 class MouseHandlerMixin {
     @Inject(method = ["onButton"], at = [At("HEAD")], cancellable = true)
     private fun glacierOnButton(window: Long, buttonInfo: MouseButtonInfo, action: Int, ci: CallbackInfo) {
+        if (CosmeticsMenu.mouseClicked(buttonInfo.button(), action) || CosmeticsMenu.mouseReleased(buttonInfo.button(), action)) {
+            ci.cancel()
+            return
+        }
         if (HudOverlay.mouseClicked(buttonInfo.button(), action)) {
             ci.cancel()
             return
@@ -30,6 +35,10 @@ class MouseHandlerMixin {
 
     @Inject(method = ["onScroll"], at = [At("HEAD")], cancellable = true)
     private fun glacierOnScroll(window: Long, horizontal: Double, vertical: Double, ci: CallbackInfo) {
+        if (CosmeticsMenu.mouseScrolled(vertical)) {
+            ci.cancel()
+            return
+        }
         if (AsteriaClickGui.mouseScrolled(vertical)) {
             ci.cancel()
         }

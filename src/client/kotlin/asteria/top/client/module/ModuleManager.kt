@@ -17,6 +17,7 @@ import asteria.top.client.module.modules.visual.BlockOverlayModule
 import asteria.top.client.module.modules.visual.HandShaderModule
 import asteria.top.client.module.modules.visual.InterfaceModule
 import asteria.top.client.module.modules.visual.ChamsModule
+import asteria.top.client.module.modules.visual.CosmeticsModule
 import asteria.top.client.module.modules.visual.NameTagsModule
 import asteria.top.client.module.modules.visual.LiquidFogModule
 import asteria.top.client.module.modules.visual.PostProcessingModule
@@ -56,6 +57,7 @@ object ModuleManager {
     val handShader = HandShaderModule()
     val interfaceModule = InterfaceModule()
     val chams = ChamsModule()
+    val cosmetics = CosmeticsModule()
     val viewModel = ViewModelModule()
     val test1 = Test1Module()
 
@@ -75,6 +77,7 @@ object ModuleManager {
         interfaceModule,
         targetEsp,
         ambience,
+        cosmetics,
         arrows,
         nameTags,
         predictions,
