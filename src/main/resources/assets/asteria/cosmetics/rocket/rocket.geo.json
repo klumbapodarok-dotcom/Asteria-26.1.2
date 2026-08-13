@@ -1,0 +1,92 @@
+{
+	"format_version": "1.12.0",
+	"minecraft:geometry": [
+		{
+			"description": {
+				"identifier": "geometry.rocket_wings",
+				"texture_width": 64,
+				"texture_height": 64,
+				"visible_bounds_width": 5,
+				"visible_bounds_height": 4.5,
+				"visible_bounds_offset": [0, 1.75, 0]
+			},
+			"bones": [
+				{
+					"name": "wings",
+					"pivot": [0, 20, 4],
+					"cubes": [
+						{"origin": [-3, 18, 2], "size": [6, 5, 2], "uv": [36, 0]}
+					]
+				},
+				{
+					"name": "wing_right",
+					"parent": "wings",
+					"pivot": [-3.75, 20.5, 4.25],
+					"cubes": [
+						{"origin": [-5.25, 16, 2.75], "size": [3, 8, 3], "inflate": 0.1, "pivot": [-3.75, 20.5, 4.25], "rotation": [0, -45, 0], "uv": [36, 7]},
+						{"origin": [-4.25, 16, 5.75], "size": [1, 8, 5], "pivot": [-3.75, 20.5, 4.25], "rotation": [0, -45, 0], "uv": [14, 24]},
+						{"origin": [-12.99264, 14, 8.19975], "size": [5, 12, 1], "uv": [26, 24]},
+						{"origin": [-18.99264, 13, 8.19975], "size": [6, 12, 1], "uv": [0, 24]},
+						{"origin": [-21.1294, 14, 6.97993], "size": [3, 10, 1], "pivot": [-20.1294, 20, 7.47993], "rotation": [0, -42.5, 0], "uv": [0, 37]},
+						{"origin": [-24.1294, 14, 6.97993], "size": [3, 8, 1], "pivot": [-20.1294, 20, 7.47993], "rotation": [0, -42.5, 0], "uv": [8, 37]},
+						{"origin": [-23.49071, 13, 4.40893], "size": [1, 10, 1], "inflate": 0.1, "uv": [16, 37]},
+						{"origin": [-22.99071, 11, 3.40893], "size": [0, 16, 3], "inflate": 0.01, "uv": [30, -1]},
+						{"origin": [-22.99071, 11, 3.40893], "size": [0, 16, 3], "inflate": 0.01, "pivot": [-22.99071, 18.5, 4.90893], "rotation": [0, -90, 0], "uv": [30, -1]},
+						{"origin": [-5.25, 14, 2.75], "size": [3, 3, 3], "inflate": -0.1, "pivot": [-3.75, 20.5, 4.25], "rotation": [0, -45, 0], "uv": [30, 18]}
+					]
+				},
+				{
+					"name": "energy",
+					"parent": "wing_right",
+					"pivot": [-12.49264, 20, 8.69975],
+					"cubes": [
+						{"origin": [-19.99264, 8, 8.69975], "size": [15, 24, 0], "inflate": 0.01, "pivot": [-12.49264, 20, 8.69975], "rotation": [0, -50, 0], "uv": [0, 0]},
+						{"origin": [-19.99264, 8, 8.69975], "size": [15, 24, 0], "inflate": 0.01, "pivot": [-12.49264, 20, 8.69975], "rotation": [0, 50, 0], "uv": [0, 0]}
+					]
+				},
+				{
+					"name": "flame_right",
+					"parent": "wing_right",
+					"pivot": [-3.75, 15.5, 4.25],
+					"cubes": [
+						{"origin": [-4.75, 9, 3.25], "size": [2, 8, 2], "pivot": [-3.75, 20.5, 4.25], "rotation": [0, -45, 0], "uv": [49, 27]}
+					]
+				},
+				{
+					"name": "wing_left",
+					"parent": "wings",
+					"pivot": [3.75, 20.5, 4.25],
+					"cubes": [
+						{"origin": [2.25, 16, 2.75], "size": [3, 8, 3], "inflate": 0.1, "pivot": [3.75, 20.5, 4.25], "rotation": [0, 45, 0], "uv": [36, 7], "mirror": true},
+						{"origin": [3.25, 16, 5.75], "size": [1, 8, 5], "pivot": [3.75, 20.5, 4.25], "rotation": [0, 45, 0], "uv": [14, 24], "mirror": true},
+						{"origin": [7.99264, 14, 8.19975], "size": [5, 12, 1], "uv": [26, 24], "mirror": true},
+						{"origin": [12.99264, 13, 8.19975], "size": [6, 12, 1], "uv": [0, 24], "mirror": true},
+						{"origin": [18.1294, 14, 6.97993], "size": [3, 10, 1], "pivot": [20.1294, 20, 7.47993], "rotation": [0, 42.5, 0], "uv": [0, 37], "mirror": true},
+						{"origin": [21.1294, 14, 6.97993], "size": [3, 8, 1], "pivot": [20.1294, 20, 7.47993], "rotation": [0, 42.5, 0], "uv": [8, 37], "mirror": true},
+						{"origin": [22.49071, 13, 4.40893], "size": [1, 10, 1], "inflate": 0.1, "uv": [16, 37], "mirror": true},
+						{"origin": [22.99071, 11, 3.40893], "size": [0, 16, 3], "inflate": 0.01, "uv": [30, -1], "mirror": true},
+						{"origin": [22.99071, 11, 3.40893], "size": [0, 16, 3], "inflate": 0.01, "pivot": [22.99071, 18.5, 4.90893], "rotation": [0, 90, 0], "uv": [30, -1], "mirror": true},
+						{"origin": [2.25, 14, 2.75], "size": [3, 3, 3], "inflate": -0.1, "pivot": [3.75, 20.5, 4.25], "rotation": [0, 45, 0], "uv": [30, 18], "mirror": true}
+					]
+				},
+				{
+					"name": "energy2",
+					"parent": "wing_left",
+					"pivot": [12.49264, 20, 8.69975],
+					"cubes": [
+						{"origin": [4.99264, 8, 8.69975], "size": [15, 24, 0], "inflate": 0.01, "pivot": [12.49264, 20, 8.69975], "rotation": [0, 50, 0], "uv": [0, 0], "mirror": true},
+						{"origin": [4.99264, 8, 8.69975], "size": [15, 24, 0], "inflate": 0.01, "pivot": [12.49264, 20, 8.69975], "rotation": [0, -50, 0], "uv": [0, 0], "mirror": true}
+					]
+				},
+				{
+					"name": "flame_left",
+					"parent": "wing_left",
+					"pivot": [3.75, 15.5, 4.25],
+					"cubes": [
+						{"origin": [2.75, 9, 3.25], "size": [2, 8, 2], "pivot": [3.75, 20.5, 4.25], "rotation": [0, 45, 0], "uv": [49, 27], "mirror": true}
+					]
+				}
+			]
+		}
+	]
+}

@@ -1,0 +1,14 @@
+{
+    "name":  "rocket",
+    "category":  "ĐšĐ Đ«Đ›Đ¬ĐŻ",
+    "type":  "COSMETIC",
+    "optionId":  105,
+    "price":  149.0,
+    "scale":  1.0,
+    "position":  {
+                     "x":  -0.5,
+                     "y":  -2.0,
+                     "z":  -0.5
+                 },
+    "textureSource":  "https://deltaclient.xyz/api/cosmetics/cosmetic/wings/rocket/rocket.png"
+}
