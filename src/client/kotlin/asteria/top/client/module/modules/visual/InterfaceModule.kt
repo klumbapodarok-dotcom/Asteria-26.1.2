@@ -16,6 +16,7 @@ class InterfaceModule : Module(
     val keybinds = setting(BooleanSetting("Keybinds", false))
     val potions = setting(BooleanSetting("Potions", false))
     val cooldowns = setting(BooleanSetting("Cooldowns", false))
+    val targetHud = setting(BooleanSetting("Target HUD", false))
     val notifications = setting(BooleanSetting("Notifications", true))
     val hudSize = setting(EnumSetting("HUD Size", HudSize.entries.toTypedArray(), HudSize.NORMAL) { it.label })
     val customHudSize = setting(IntSetting("Custom HUD Size", 100, 50, 150, 1, "%").visibleWhen { hudSize.value == HudSize.CUSTOM })

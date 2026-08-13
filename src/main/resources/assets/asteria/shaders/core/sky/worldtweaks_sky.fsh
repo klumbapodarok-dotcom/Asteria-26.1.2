@@ -179,7 +179,7 @@ vec4 nebulaClouds(vec3 ro, vec3 rd, int cloudIter, float cloudStep) {
 }
 
 // ---- FogBlur-ish ----
-float noise2(vec2 p) {
+float asteriaValueNoise2(vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
     f = f * f * (3.0 - 2.0 * f);
@@ -194,7 +194,7 @@ float fbm2(vec2 p) {
     float v = 0.0;
     float amp = 0.5;
     for (int i = 0; i < 4; i++) {
-        v += noise2(p) * amp;
+        v += asteriaValueNoise2(p) * amp;
         p = p * 2.02 + vec2(19.1, 7.4);
         amp *= 0.5;
     }

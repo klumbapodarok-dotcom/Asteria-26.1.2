@@ -4,6 +4,7 @@ import asteria.top.client.gui.hud.HudStyle
 import asteria.top.client.module.Module
 import asteria.top.client.module.ModuleCategory
 import asteria.top.client.module.setting.BooleanSetting
+import asteria.top.client.module.setting.ColorSetting
 import asteria.top.client.module.setting.EnumSetting
 import asteria.top.client.module.setting.FloatSetting
 import asteria.top.client.module.setting.IntSetting
@@ -83,14 +84,10 @@ class ParticlesModule : Module(
     private val colorMode = setting(
         EnumSetting("Режим цвета", ColorMode.entries.toTypedArray(), ColorMode.CLIENT) { it.label }
     )
-    private val customRed = setting(
-        IntSetting("Красный", 255, 0, 255, 1).visibleWhen { colorMode.value == ColorMode.CUSTOM }
-    )
-    private val customGreen = setting(
-        IntSetting("Зелёный", 64, 0, 255, 1).visibleWhen { colorMode.value == ColorMode.CUSTOM }
-    )
-    private val customBlue = setting(
-        IntSetting("Синий", 64, 0, 255, 1).visibleWhen { colorMode.value == ColorMode.CUSTOM }
+    private val customColor = setting(
+        ColorSetting("Цвет", 0xFF4040, Triple("Красный", "Зелёный", "Синий")).also {
+            it.visibleWhen { colorMode.value == ColorMode.CUSTOM }
+        }
     )
 
     private val attackParticles = mutableListOf<Particle>()
@@ -319,10 +316,7 @@ class ParticlesModule : Module(
 
     private fun resolveColor(offset: Int): Int {
         if (colorMode.value == ColorMode.CUSTOM) {
-            return (0xFF shl 24) or
-                (customRed.value shl 16) or
-                (customGreen.value shl 8) or
-                customBlue.value
+            return customColor.argb
         }
         val accent = HudStyle.ACCENT
         val firstR = (accent shr 16) and 0xFF

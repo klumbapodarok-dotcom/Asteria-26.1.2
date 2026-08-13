@@ -3,6 +3,7 @@ package asteria.top.client.module.modules.visual
 import asteria.top.client.module.Module
 import asteria.top.client.module.ModuleCategory
 import asteria.top.client.module.setting.BooleanSetting
+import asteria.top.client.module.setting.ColorSetting
 import asteria.top.client.module.setting.EnumSetting
 import asteria.top.client.module.setting.FloatSetting
 import asteria.top.client.module.setting.IntSetting
@@ -49,6 +50,11 @@ class AmbienceModule : Module(
         NEBULA("Nebula", 7),
     }
 
+    enum class SkyColorMode(val label: String) {
+        INTERFACE("Интерфейс"),
+        CUSTOM("Свой"),
+    }
+
     val timeMode = setting(EnumSetting("Время", TimeMode.entries.toTypedArray(), TimeMode.NONE) { it.label })
     val skyMode = setting(EnumSetting("Небо", SkyMode.entries.toTypedArray(), SkyMode.NORMAL) { it.label })
     val skyQuality = setting(
@@ -56,6 +62,19 @@ class AmbienceModule : Module(
     )
     val showStars = setting(
         BooleanSetting("Звёзды", true).visibleWhen { skyMode.value != SkyMode.NORMAL }
+    )
+    val skyColorMode = setting(
+        EnumSetting("Цвет неба", SkyColorMode.entries.toTypedArray(), SkyColorMode.INTERFACE) { it.label }
+            .visibleWhen { skyMode.value != SkyMode.NORMAL }
+    )
+    val skyColor = setting(
+        ColorSetting(
+            "Пользовательский цвет неба",
+            0x80FF80,
+            Triple("Красный неба", "Зелёный неба", "Синий неба"),
+        ).also {
+            it.visibleWhen { skyMode.value != SkyMode.NORMAL && skyColorMode.value == SkyColorMode.CUSTOM }
+        }
     )
     val fogMode = setting(EnumSetting("Туман", FogMode.entries.toTypedArray(), FogMode.NOTHING) { it.label })
     val fogStart = setting(
@@ -68,17 +87,10 @@ class AmbienceModule : Module(
         EnumSetting("Цвет", FogColorMode.entries.toTypedArray(), FogColorMode.INTERFACE) { it.label }
             .visibleWhen { fogMode.value == FogMode.OVERRIDE }
     )
-    val fogColorRed = setting(
-        IntSetting("Красный", 128, 0, 255, 1)
-            .visibleWhen { fogMode.value == FogMode.OVERRIDE && fogColorMode.value == FogColorMode.CUSTOM }
-    )
-    val fogColorGreen = setting(
-        IntSetting("Зелёный", 115, 0, 255, 1)
-            .visibleWhen { fogMode.value == FogMode.OVERRIDE && fogColorMode.value == FogColorMode.CUSTOM }
-    )
-    val fogColorBlue = setting(
-        IntSetting("Синий", 225, 0, 255, 1)
-            .visibleWhen { fogMode.value == FogMode.OVERRIDE && fogColorMode.value == FogColorMode.CUSTOM }
+    val fogColor = setting(
+        ColorSetting("Пользовательский цвет тумана", 0x8073E1, Triple("Красный", "Зелёный", "Синий")).also {
+            it.visibleWhen { fogMode.value == FogMode.OVERRIDE && fogColorMode.value == FogColorMode.CUSTOM }
+        }
     )
 
     fun shouldRenderSky(): Boolean = enabled && skyMode.value != SkyMode.NORMAL

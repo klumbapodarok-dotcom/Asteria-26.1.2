@@ -3,8 +3,8 @@ package asteria.top.client.module.modules.visual
 import asteria.top.client.module.Module
 import asteria.top.client.module.ModuleCategory
 import asteria.top.client.module.setting.BooleanSetting
+import asteria.top.client.module.setting.ColorSetting
 import asteria.top.client.module.setting.FloatSetting
-import asteria.top.client.module.setting.IntSetting
 import asteria.top.client.module.setting.MultiBooleanSetting
 import asteria.top.client.render.FontRenderer
 import asteria.top.client.render.TextureRenderer
@@ -57,9 +57,9 @@ class ArrowsModule : Module(
     )
     private val ignoreNaked = setting(BooleanSetting("Игнорировать голых", false))
     private val arrowSize = setting(FloatSetting("Размер", 22.0f, 12.0f, 40.0f, 1.0f))
-    private val colorRed = setting(IntSetting("Красный", 0x88, 0, 255, 1))
-    private val colorGreen = setting(IntSetting("Зелёный", 0xFF, 0, 255, 1))
-    private val colorBlue = setting(IntSetting("Синий", 0x82, 0, 255, 1))
+    private val color = setting(
+        ColorSetting("Цвет", 0x88FF82, Triple("Красный", "Зелёный", "Синий"))
+    )
 
     private var smoothRadius = RADAR_RADIUS
     private var smoothYaw = 0.0f
@@ -186,7 +186,7 @@ class ArrowsModule : Module(
     }
 
     private fun arrowColor(): Int {
-        return (0xFF shl 24) or (colorRed.value shl 16) or (colorGreen.value shl 8) or colorBlue.value
+        return color.argb
     }
 
     // Mirrors the original: full health = full set color, low health = a darkened shade of it.

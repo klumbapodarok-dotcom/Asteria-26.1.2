@@ -20,11 +20,12 @@ abstract class LivingEntityRendererMixin {
 
     @Inject(method = ["extractRenderState"], at = [At("TAIL")])
     private fun glacierApplyRotationView(entity: LivingEntity, state: LivingEntityRenderState, tickDelta: Float, ci: CallbackInfo) {
-        if (!ModuleManager.rotationView.enabled) return
         if (entity !== Minecraft.getInstance().player) return
-        if (!CombatRotationManager.hasRotation()) return
 
-        state.xRot = CombatRotationManager.packetPitch(state.xRot)
+        if (ModuleManager.rotationView.enabled && CombatRotationManager.hasRotation()) {
+            state.xRot = CombatRotationManager.packetPitch(state.xRot)
+        }
+        state.xRot = ModuleManager.speed.modelPitch(state.xRot)
     }
 
     @Inject(method = ["extractRenderState"], at = [At("TAIL")])

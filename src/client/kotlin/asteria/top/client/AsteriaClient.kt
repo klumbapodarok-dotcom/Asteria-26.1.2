@@ -5,16 +5,30 @@ import asteria.top.client.config.ClientConfig
 import asteria.top.client.module.ModuleManager
 import asteria.top.client.render.HandShaderRenderer
 import asteria.top.client.render.ChamsRenderer
+import asteria.top.client.render.cosmetic.RocketBackRenderLayer
+import net.minecraft.client.model.player.PlayerModel
+import net.minecraft.client.renderer.entity.RenderLayerParent
+import net.minecraft.client.renderer.entity.player.AvatarRenderer
+import net.minecraft.client.renderer.entity.state.AvatarRenderState
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents
+import net.fabricmc.fabric.api.client.rendering.v1.LivingEntityRenderLayerRegistrationCallback
 
 object AsteriaClient : ClientModInitializer {
 	override fun onInitializeClient() {
 		ClientConfig.init()
 		ClientConfig.load()
 		CommandManager.init()
+
+		LivingEntityRenderLayerRegistrationCallback.EVENT.register { _, renderer, helper, _ ->
+			if (renderer is AvatarRenderer<*>) {
+				@Suppress("UNCHECKED_CAST")
+				val parent = renderer as RenderLayerParent<AvatarRenderState, PlayerModel>
+				helper.register(RocketBackRenderLayer(parent))
+			}
+		}
 
 		ClientTickEvents.START_CLIENT_TICK.register(ClientTickEvents.StartTick { ModuleManager.backtrack.tick() })
 		ClientTickEvents.START_CLIENT_TICK.register(ClientTickEvents.StartTick { ModuleManager.autoTrap.tick() })

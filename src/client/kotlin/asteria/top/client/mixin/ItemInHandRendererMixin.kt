@@ -2,6 +2,7 @@ package asteria.top.client.mixin
 
 import com.mojang.blaze3d.vertex.PoseStack
 import asteria.top.client.module.ModuleManager
+import asteria.top.client.render.HandsRenderer
 import net.minecraft.client.player.AbstractClientPlayer
 import net.minecraft.client.renderer.SubmitNodeCollector
 import net.minecraft.client.renderer.ItemInHandRenderer
@@ -14,6 +15,30 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
 
 @Mixin(ItemInHandRenderer::class)
 abstract class ItemInHandRendererMixin {
+    @Inject(method = ["renderHandsWithItems"], at = [At("HEAD")])
+    private fun asteriaBeginHandsCapture(
+        tickDelta: Float,
+        poseStack: PoseStack,
+        submitNodeCollector: SubmitNodeCollector,
+        player: net.minecraft.client.player.LocalPlayer,
+        light: Int,
+        ci: CallbackInfo,
+    ) {
+        HandsRenderer.beginCapture()
+    }
+
+    @Inject(method = ["renderHandsWithItems"], at = [At("RETURN")])
+    private fun asteriaEndHandsCapture(
+        tickDelta: Float,
+        poseStack: PoseStack,
+        submitNodeCollector: SubmitNodeCollector,
+        player: net.minecraft.client.player.LocalPlayer,
+        light: Int,
+        ci: CallbackInfo,
+    ) {
+        HandsRenderer.endCapture()
+    }
+
     @Inject(
         method = ["renderArmWithItem"],
         at = [

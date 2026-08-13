@@ -15,7 +15,9 @@ import asteria.top.client.module.modules.visual.AmbienceModule
 import asteria.top.client.module.modules.visual.ArrowsModule
 import asteria.top.client.module.modules.visual.BlockOverlayModule
 import asteria.top.client.module.modules.visual.HandShaderModule
+import asteria.top.client.module.modules.visual.HandsModule
 import asteria.top.client.module.modules.visual.InterfaceModule
+import asteria.top.client.module.modules.visual.KasmetikatestModule
 import asteria.top.client.module.modules.visual.ChamsModule
 import asteria.top.client.module.modules.visual.CosmeticsModule
 import asteria.top.client.module.modules.visual.NameTagsModule
@@ -55,9 +57,11 @@ object ModuleManager {
     val fakeLag = FakeLagModule()
     val blockOverlay = BlockOverlayModule()
     val handShader = HandShaderModule()
+    val hands = HandsModule()
     val interfaceModule = InterfaceModule()
     val chams = ChamsModule()
     val cosmetics = CosmeticsModule()
+    val kasmetikatest = KasmetikatestModule()
     val viewModel = ViewModelModule()
     val test1 = Test1Module()
 
@@ -78,12 +82,14 @@ object ModuleManager {
         targetEsp,
         ambience,
         cosmetics,
+        kasmetikatest,
         arrows,
         nameTags,
         predictions,
         particles,
         trajectories,
         trapEsp,
+        hands,
         test1,
     )
 

@@ -7,6 +7,7 @@ import com.mojang.blaze3d.pipeline.DepthStencilState
 import com.mojang.blaze3d.pipeline.RenderPipeline
 import com.mojang.blaze3d.platform.CompareOp
 import com.mojang.blaze3d.systems.RenderSystem
+import com.mojang.blaze3d.textures.FilterMode
 import com.mojang.blaze3d.vertex.DefaultVertexFormat
 import com.mojang.blaze3d.vertex.MeshData
 import com.mojang.blaze3d.vertex.PoseStack
@@ -18,11 +19,14 @@ import asteria.top.client.module.ModuleManager
 import asteria.top.client.module.setting.BooleanSetting
 import asteria.top.client.module.setting.EnumSetting
 import asteria.top.client.module.setting.FloatSetting
+import asteria.top.client.module.setting.IntSetting
 import asteria.top.client.util.AnimationUtil
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.RenderPipelines
 import net.minecraft.resources.Identifier
+import net.minecraft.core.BlockPos
+import com.mojang.math.Axis
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.phys.Vec3
@@ -34,6 +38,7 @@ import java.util.OptionalInt
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.max
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 class TargetEspModule : Module(
@@ -43,16 +48,27 @@ class TargetEspModule : Module(
     enabledByDefault = false,
 ) {
     enum class Mode(val label: String) {
+        GHOSTS("Призраки"),
+        SQUARE("Квадрат"),
         CRYSTALS("Кристалики"),
         RING("Кружок"),
     }
 
     private val mode = setting(EnumSetting("Mode", Mode.entries.toTypedArray(), Mode.CRYSTALS) { it.label })
+    private val ghostSize = setting(FloatSetting("Размер частиц", 0.22f, 0.1f, 0.4f, 0.01f).visibleWhen { mode.value == Mode.GHOSTS })
+    private val ghostLength = setting(FloatSetting("Длина эффекта", 6.0f, 1.0f, 12.0f, 0.1f).visibleWhen { mode.value == Mode.GHOSTS })
+    private val ghostPosition = setting(FloatSetting("Позиция", 12.0f, 0.0f, 22.0f, 0.1f).visibleWhen { mode.value == Mode.GHOSTS })
+    private val ghostSpeed = setting(FloatSetting("Скорость", 1.0f, 0.1f, 3.0f, 0.1f).visibleWhen { mode.value == Mode.GHOSTS })
+    private val ghostDensity = setting(FloatSetting("Кол-во частиц", 1.7f, 1.0f, 3.0f, 0.1f).visibleWhen { mode.value == Mode.GHOSTS })
+    private val ghostCount = setting(FloatSetting("Количество призраков", 4.0f, 2.0f, 4.0f, 1.0f).visibleWhen { mode.value == Mode.GHOSTS })
+    private val ghostRedden = setting(BooleanSetting("Redden", true).visibleWhen { mode.value == Mode.GHOSTS })
+    private val squareRedden = setting(BooleanSetting("Redden", true).visibleWhen { mode.value == Mode.SQUARE })
     private val crystalGlowAlpha = setting(FloatSetting("Glow Alpha", 38.0f, 0.0f, 255.0f, 1.0f).visibleWhen { mode.value == Mode.CRYSTALS })
     private val crystalAlpha = setting(FloatSetting("Crystal Alpha", 175.0f, 0.0f, 255.0f, 1.0f).visibleWhen { mode.value == Mode.CRYSTALS })
     private val crystalGlowSize = setting(FloatSetting("Glow Size", 1.9f, 0.5f, 4.0f, 0.05f).visibleWhen { mode.value == Mode.CRYSTALS })
     private val crystalWidth = setting(FloatSetting("Crystal Width", 0.076f, 0.02f, 0.16f, 0.002f).visibleWhen { mode.value == Mode.CRYSTALS })
     private val crystalLength = setting(FloatSetting("Crystal Length", 0.160f, 0.05f, 0.30f, 0.005f).visibleWhen { mode.value == Mode.CRYSTALS })
+    private val crystalLayout = setting(IntSetting("Расположение", 1, 1, 50, 1).visibleWhen { mode.value == Mode.CRYSTALS })
     private val crystalRedden = setting(BooleanSetting("Redden", true).visibleWhen { mode.value == Mode.CRYSTALS })
     private val ringFillEnabled = setting(BooleanSetting("Ring Fill", true).visibleWhen { mode.value == Mode.RING })
     private val ringRedden = setting(BooleanSetting("Redden", true).visibleWhen { mode.value == Mode.RING })
@@ -84,6 +100,15 @@ class TargetEspModule : Module(
     private var crystalSmoothZ = 0.0
     private var crystalHasSmoothPos = false
     private var lastFrameNanos = 0L
+    private val ghostAnimation = AnimationUtil.TimedAnimation(0.0f)
+    private var ghostLastTarget: Entity? = null
+    private val squareAnimation = AnimationUtil.TimedAnimation(0.0f)
+    private var squareLastCenter = Vec3.ZERO
+    private var squareLastAccent = TARGET_ACCENT
+    private var damagePulseTargetId = -1
+    private var damagePulseLastHurtTime = 0
+    private var damagePulseStartedAt = 0L
+    private var damagePulseStrength = 0.0f
 
     fun renderGizmos(context: LevelRenderContext) {
         val mc = Minecraft.getInstance()
@@ -93,6 +118,7 @@ class TargetEspModule : Module(
         // long as Backtrack kept tracking something on its own.
         val target = (ModuleManager.killaura.target
             ?: ModuleManager.backtrack.target?.takeIf { ModuleManager.killaura.enabled })?.takeIf { it.isAlive }
+        updateDamagePulse(target)
 
         val poseStack = context.poseStack()
         renderModelView.set(context.levelState().cameraRenderState.viewRotationMatrix)
@@ -101,27 +127,185 @@ class TargetEspModule : Module(
         // their grow-and-fade outro can finish; each returns immediately on
         // its own once there's nothing left to animate.
         when (mode.value) {
+            Mode.GHOSTS -> renderGhosts(target, poseStack, cameraPos)
+            Mode.SQUARE -> renderSquare(target, poseStack, cameraPos)
             Mode.CRYSTALS -> renderCrystalOrbit(target, poseStack, cameraPos)
             Mode.RING -> renderRing(target, poseStack, cameraPos)
         }
     }
 
-    // Blends the shared accent color toward pure red while the target is in
-    // its vanilla hurt-flash window (hurtTime counts down from hurtDuration
-    // on every hit, client-side, same field the vanilla red damage tint
-    // uses) — smoothstep-eased so it fades in/out instead of snapping, and
-    // capped at 70% red so it never fully overrides the theme color.
+    /** Port of Asteria12111's rotating textured "Square" TargetESP. */
+    private fun renderSquare(target: Entity?, poseStack: PoseStack, cameraPos: Vec3) {
+        if (target != null) {
+            squareLastCenter = targetCenter(target)
+            squareLastAccent = accentColor(target, squareRedden.value)
+        }
+
+        squareAnimation.update()
+        squareAnimation.run(
+            if (target != null) 1.0f else 0.0f,
+            400L,
+            { value -> value },
+            true,
+        )
+
+        val visibility = squareAnimation.value.coerceIn(0.0f, 1.0f)
+        if (target == null && visibility <= 0.001f) return
+
+        val now = System.currentTimeMillis()
+        val cycleProgress = (now % 3660L) / 3660.0f
+        val rightPhase = cycleProgress < 0.5f
+        val phaseProgress = (cycleProgress % 0.5f) / 0.5f
+        val rotationProgress = (phaseProgress / (1.5f / 1.53f)).coerceAtMost(1.0f)
+        val eased = 0.5f - 0.5f * cos(rotationProgress * Math.PI).toFloat()
+        val rotation = (if (rightPhase) eased else 1.0f - eased) * 720.0f
+
+        val alpha = (visibility * 255.0f * 0.82f).roundToInt().coerceIn(0, 255)
+        val color = (alpha shl 24) or (squareLastAccent and 0x00FFFFFF)
+        val billboard = Billboard(
+            squareLastCenter.subtract(cameraPos),
+            0.535f * visibility * damageScale(squareRedden.value, SQUARE_HIT_SHRINK),
+            color,
+            rotation,
+        )
+        renderTexturedBillboards(listOf(billboard), poseStack, squarePipeline, additive = true, textureId = SQUARE_TEXTURE)
+    }
+
+    /**
+     * Direct port of Asteria12111 TargetEspMain#renderGhostsWorld. The orbit,
+     * vertical wave, trail taper, color cycle and defaults intentionally keep
+     * the old formulas; only the 26.1.2 render-pipeline calls differ.
+     */
+    private fun renderGhosts(target: Entity?, poseStack: PoseStack, cameraPos: Vec3) {
+        if (target != null) ghostLastTarget = target
+
+        val active = target != null
+        ghostAnimation.update()
+        ghostAnimation.run(
+            if (active) 1.0f else 0.0f,
+            400L,
+            { value -> value },
+            true,
+        )
+
+        if (!active && ghostAnimation.value <= 0.001f) {
+            ghostLastTarget = null
+            return
+        }
+
+        val renderTarget = target ?: ghostLastTarget ?: return
+        val mc = Minecraft.getInstance()
+        val tickDelta = mc.deltaTracker.getGameTimeDeltaPartialTick(false)
+        val espLength = ghostLength.value
+        val position = ghostPosition.value
+        val speed = ghostSpeed.value
+        val shaking = 1.32f
+        val amplitude = 3.0f
+        val timeSeconds = System.currentTimeMillis() * 0.001
+        val iAge = timeSeconds * 20.0 * speed
+        val baseAlpha = (ghostAnimation.value * 255.0f).roundToInt().coerceIn(0, 255)
+
+        val first = damageTint(GHOST_GRADIENT_START, renderTarget, ghostRedden.value)
+        val twin = damageTint(GHOST_GRADIENT_END, renderTarget, ghostRedden.value)
+        val time = (System.currentTimeMillis() % 2000L) / 2000.0f
+        val colorLerp = (sin(2.0 * Math.PI * time) * 0.5 + 0.5).toFloat()
+        val red = (((first shr 16) and 0xFF) + (((twin shr 16) and 0xFF) - ((first shr 16) and 0xFF)) * colorLerp).toInt()
+        val green = (((first shr 8) and 0xFF) + (((twin shr 8) and 0xFF) - ((first shr 8) and 0xFF)) * colorLerp).toInt()
+        val blue = ((first and 0xFF) + ((twin and 0xFF) - (first and 0xFF)) * colorLerp).toInt()
+
+        val ghosts = ghostCount.value.roundToInt().coerceIn(2, 4)
+        val particleCount = (espLength * ghostDensity.value).toInt()
+        if (particleCount <= 0) return
+
+        val targetX = renderTarget.xOld + (renderTarget.x - renderTarget.xOld) * tickDelta - cameraPos.x
+        val targetY = renderTarget.yOld + (renderTarget.y - renderTarget.yOld) * tickDelta - cameraPos.y
+        val targetZ = renderTarget.zOld + (renderTarget.z - renderTarget.zOld) * tickDelta - cameraPos.z
+        val billboards = ArrayList<Billboard>(ghosts * particleCount)
+
+        for (ghostIndex in 0 until ghosts) {
+            for (particleIndex in 0 until particleCount) {
+                val offset = particleIndex.toFloat() / particleCount
+                val baseAngle = 45.0 + ghostIndex * (360.0 / ghosts)
+                val radians = Math.toRadians(
+                    (baseAngle + offset * espLength * position + iAge * 12.0) % 360.0,
+                )
+                val verticalWave = sin(
+                    Math.toRadians(iAge * 2.5 + offset * espLength * 2.0 + ghostIndex * 90.0) * amplitude,
+                ) / shaking
+                val alphaFactor = 1.0f - offset * 0.3f
+                val gradientAlpha = (baseAlpha * alphaFactor).toInt()
+                val taper = offset * offset * (3.0f - 2.0f * offset)
+                val scale = ghostSize.value * (0.55f + taper * 0.45f)
+
+                val x = targetX + cos(radians) * renderTarget.bbWidth
+                val y = targetY + 1.0 + verticalWave
+                val z = targetZ + sin(radians) * renderTarget.bbWidth
+                val worldPosition = cameraPos.add(x, y, z)
+                if (!mc.level!!.getFluidState(BlockPos.containing(worldPosition)).isEmpty) continue
+
+                billboards += Billboard(Vec3(x, y, z), scale, rgba(red, green, blue, gradientAlpha))
+            }
+        }
+
+        renderTexturedBillboards(billboards, poseStack, ghostPipeline, additive = true, textureId = GHOST_TEXTURE)
+    }
+
+    // A hit starts one continuous two-part pulse instead of reading hurtTime
+    // directly. That removes the visible one-tick color steps: Redden eases
+    // into red, then gently returns to the normal accent.
+    private fun updateDamagePulse(target: Entity?) {
+        val now = System.currentTimeMillis()
+        val living = target as? LivingEntity
+        if (living != null) {
+            if (damagePulseTargetId != living.id) {
+                damagePulseTargetId = living.id
+                damagePulseLastHurtTime = living.hurtTime
+                damagePulseStartedAt = 0L
+            } else {
+                if (living.hurtTime > damagePulseLastHurtTime) {
+                    damagePulseStartedAt = now
+                }
+                damagePulseLastHurtTime = living.hurtTime
+            }
+        }
+
+        if (damagePulseStartedAt == 0L) {
+            damagePulseStrength = 0.0f
+            return
+        }
+
+        val elapsed = now - damagePulseStartedAt
+        damagePulseStrength = when {
+            elapsed < DAMAGE_PULSE_RISE_MS -> smoothstep(elapsed.toFloat() / DAMAGE_PULSE_RISE_MS)
+            elapsed < DAMAGE_PULSE_DURATION_MS -> {
+                val fall = (elapsed - DAMAGE_PULSE_RISE_MS).toFloat() / DAMAGE_PULSE_FALL_MS
+                1.0f - smoothstep(fall)
+            }
+            else -> 0.0f
+        }
+        if (elapsed >= DAMAGE_PULSE_DURATION_MS) damagePulseStartedAt = 0L
+    }
+
+    private fun smoothstep(value: Float): Float {
+        val t = value.coerceIn(0.0f, 1.0f)
+        return t * t * (3.0f - 2.0f * t)
+    }
+
+    private fun damageScale(reddenEnabled: Boolean, amount: Float): Float {
+        return if (reddenEnabled) 1.0f - damagePulseStrength * amount else 1.0f
+    }
+
     private fun accentColor(target: Entity, reddenEnabled: Boolean): Int {
-        val base = 0xFF91B7FF.toInt()
+        return damageTint(TARGET_ACCENT, target, reddenEnabled)
+    }
+
+    private fun damageTint(base: Int, target: Entity, reddenEnabled: Boolean): Int {
         val baseR = (base shr 16) and 0xFF
         val baseG = (base shr 8) and 0xFF
         val baseB = base and 0xFF
         if (!reddenEnabled) return base
-        val living = target as? LivingEntity ?: return base
-        val duration = max(1, living.hurtDuration)
-        val fraction = (living.hurtTime.toFloat() / duration).coerceIn(0.0f, 1.0f)
-        val eased = fraction * fraction * (3.0f - 2.0f * fraction)
-        val redWeight = eased * 0.7f
+        if (target !is LivingEntity) return base
+        val redWeight = damagePulseStrength * 0.4f
         val r = (baseR + (255 - baseR) * redWeight).toInt()
         val g = (baseG * (1.0f - redWeight)).toInt()
         val b = (baseB * (1.0f - redWeight)).toInt()
@@ -174,7 +358,7 @@ class TargetEspModule : Module(
         val timeSeconds = now * 0.001
         val cs = timeSeconds * 2.2
         val sinAnimNext = (sin(cs + 0.45) + 1.0) * 0.5
-        val ringRadius = 0.65f * animScale
+        val ringRadius = 0.65f * animScale * damageScale(ringRedden.value, RING_HIT_SHRINK)
         val worldRingY = ringLastWorldFeetY + sinAnimNext * ringLastHeight - 0.08
         val ringY = worldRingY - cameraPos.y
         val accent = ringLastAccent
@@ -406,7 +590,7 @@ class TargetEspModule : Module(
 
         val center = Vec3(crystalLastCenterX, crystalLastCenterY, crystalLastCenterZ).subtract(cameraPos)
         val count = 15
-        val radius = crystalLastRadius * animScale
+        val radius = crystalLastRadius * animScale * damageScale(crystalRedden.value, CRYSTAL_HIT_PULL_IN)
         // Reduce the epoch value before converting to Float. Converting the
         // full millisecond timestamp loses sub-second precision and freezes
         // all orbit/rotation animation between frames.
@@ -439,13 +623,13 @@ class TargetEspModule : Module(
             // Offsetting alternating rows by half a cell keeps columns from
             // lining up into vertical stripes.
             val rowStagger = if (row % 2 == 0) 0.0f else cellAngularWidth * 0.5f
-            val angleJitter = (crystalSeed(index, 2.31f) - 0.5f) * cellAngularWidth * 0.7f
+            val angleJitter = (crystalPlacementSeed(index, 2.31f) - 0.5f) * cellAngularWidth * 0.7f
             val angle = orbitAngle + col * cellAngularWidth + rowStagger + angleJitter
-            val heightJitter = (crystalSeed(index, 3.77f) - 0.5f) * rowSpacing * 0.55f
+            val heightJitter = (crystalPlacementSeed(index, 3.77f) - 0.5f) * rowSpacing * 0.55f
             val verticalFraction = if (gridRows > 1) row.toFloat() / (gridRows - 1) else 0.5f
             val vertical = -visualHeight * 0.5f + 0.06f + verticalFraction * availableHeight + heightJitter
             val verticalProgress = verticalFraction
-            val localRadius = radius * (0.88f + crystalSeed(index, 4.91f) * 0.18f)
+            val localRadius = radius * (0.88f + crystalPlacementSeed(index, 4.91f) * 0.18f)
             // A rotating "breathe out" pulse: each crystal gets its own
             // randomized cycle offset, and the bulge only occupies part of
             // that cycle (pulseWindow), so with count crystals staggered
@@ -529,6 +713,16 @@ class TargetEspModule : Module(
         return value - floor(value)
     }
 
+    /**
+     * Produces 50 stable placement presets. Preset 1 intentionally has no
+     * extra offset, so existing configs keep the original crystal layout.
+     */
+    private fun crystalPlacementSeed(index: Int, salt: Float): Float {
+        val layoutOffset = (crystalLayout.value - 1) * 37.719f
+        val value = sin(index * 12.9898f + salt * 78.233f + layoutOffset) * 43758.5453f
+        return value - floor(value)
+    }
+
     private fun addCrystal(builder: com.mojang.blaze3d.vertex.BufferBuilder, origin: Vec3, yaw: Float, pitch: Float, roll: Float, width: Float, height: Float, topColor: Int, sideColor1: Int, sideColor2: Int, bottomColor: Int) {
         val ex = floatArrayOf(width, 0.0f, -width, 0.0f)
         val ez = floatArrayOf(0.0f, width, 0.0f, -width)
@@ -592,7 +786,13 @@ class TargetEspModule : Module(
         }
     }
 
-    private fun renderTexturedBillboards(billboards: List<Billboard>, poseStack: PoseStack, pipeline: RenderPipeline, additive: Boolean) {
+    private fun renderTexturedBillboards(
+        billboards: List<Billboard>,
+        poseStack: PoseStack,
+        pipeline: RenderPipeline,
+        additive: Boolean,
+        textureId: Identifier? = null,
+    ) {
         if (billboards.isEmpty()) return
         val mc = Minecraft.getInstance()
         val camera = mc.gameRenderer.mainCamera
@@ -602,6 +802,7 @@ class TargetEspModule : Module(
             val pose = PoseStack()
             pose.translate(billboard.center.x, billboard.center.y, billboard.center.z)
             pose.mulPose(camera.rotation())
+            if (billboard.rotation != 0.0f) pose.mulPose(Axis.ZP.rotationDegrees(billboard.rotation))
             appendBillboard(builder, pose.last(), billboard.halfSize, billboard.color)
         }
 
@@ -617,6 +818,10 @@ class TargetEspModule : Module(
                     modelOffset,
                     textureMatrix,
                 )
+                // TextureManager may upload a texture the first time it is requested.
+                // That upload is a GPU command and must happen before this render pass
+                // is opened, otherwise 26.1.2 throws "Close the existing render pass".
+                val texture = textureId?.let { mc.textureManager.getTexture(it) }
                 val encoder = RenderSystem.getDevice().createCommandEncoder()
                 val pass = if (depthView != null) {
                     encoder.createRenderPass(
@@ -637,6 +842,13 @@ class TargetEspModule : Module(
                     it.setPipeline(pipeline)
                     RenderSystem.bindDefaultUniforms(it)
                     it.setUniform("DynamicTransforms", dynamicTransforms)
+                    if (texture != null) {
+                        it.bindTexture(
+                            "Sampler0",
+                            texture.textureView,
+                            RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR),
+                        )
+                    }
                     it.setVertexBuffer(0, vertexBuffer)
                     it.draw(0, mesh.drawState().vertexCount())
                 }
@@ -712,9 +924,25 @@ class TargetEspModule : Module(
         val height: Float,
     )
 
-    private data class Billboard(val center: Vec3, val halfSize: Float, val color: Int)
+    private data class Billboard(
+        val center: Vec3,
+        val halfSize: Float,
+        val color: Int,
+        val rotation: Float = 0.0f,
+    )
 
     companion object {
+        private const val TARGET_ACCENT = 0xFF91B7FF.toInt()
+        private val SQUARE_TEXTURE = Identifier.fromNamespaceAndPath("asteria", "images/target/target2.png")
+        private val GHOST_TEXTURE = Identifier.fromNamespaceAndPath("asteria", "images/target/ghost_bloom.png")
+        private const val GHOST_GRADIENT_START = 0xFF5690FF.toInt()
+        private const val GHOST_GRADIENT_END = 0xFF669EFF.toInt()
+        private const val DAMAGE_PULSE_RISE_MS = 140L
+        private const val DAMAGE_PULSE_FALL_MS = 460L
+        private const val DAMAGE_PULSE_DURATION_MS = DAMAGE_PULSE_RISE_MS + DAMAGE_PULSE_FALL_MS
+        private const val CRYSTAL_HIT_PULL_IN = 0.22f
+        private const val SQUARE_HIT_SHRINK = 0.20f
+        private const val RING_HIT_SHRINK = 0.18f
         private const val RING_APPEAR_MS = 280L
         private const val RING_DISAPPEAR_MS = 280L
         private const val RING_ANIM_SCALE = 1.6f
@@ -730,6 +958,36 @@ class TargetEspModule : Module(
                 .withColorTargetState(ColorTargetState(BlendFunction.TRANSLUCENT))
                 .withCull(false)
                 .withVertexFormat(DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.TRIANGLES)
+                .withDepthStencilState(DepthStencilState(CompareOp.ALWAYS_PASS, false))
+                .build()
+        )
+
+        private val ghostPipeline: RenderPipeline = RenderPipelines.register(
+            RenderPipeline.builder(RenderPipelines.MATRICES_PROJECTION_SNIPPET)
+                .withLocation(Identifier.fromNamespaceAndPath("asteria", "pipeline/target_esp_ghosts_old"))
+                .withVertexShader(Identifier.withDefaultNamespace("core/position_tex_color"))
+                .withFragmentShader(Identifier.withDefaultNamespace("core/position_tex_color"))
+                .withSampler("Sampler0")
+                // Asteria12111 used WorldRenderLayers.TEXTURED_QUADS_ADDITIVE,
+                // whose actual blend function is LIGHTNING rather than ADDITIVE.
+                // LIGHTNING respects the bloom texture alpha and prevents the
+                // overlapping trail sprites from burning into solid white ovals.
+                .withColorTargetState(ColorTargetState(BlendFunction.LIGHTNING))
+                .withCull(false)
+                .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, VertexFormat.Mode.TRIANGLES)
+                .withDepthStencilState(DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                .build()
+        )
+
+        private val squarePipeline: RenderPipeline = RenderPipelines.register(
+            RenderPipeline.builder(RenderPipelines.MATRICES_PROJECTION_SNIPPET)
+                .withLocation(Identifier.fromNamespaceAndPath("asteria", "pipeline/target_esp_square"))
+                .withVertexShader(Identifier.withDefaultNamespace("core/position_tex_color"))
+                .withFragmentShader(Identifier.withDefaultNamespace("core/position_tex_color"))
+                .withSampler("Sampler0")
+                .withColorTargetState(ColorTargetState(BlendFunction.LIGHTNING))
+                .withCull(false)
+                .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, VertexFormat.Mode.TRIANGLES)
                 .withDepthStencilState(DepthStencilState(CompareOp.ALWAYS_PASS, false))
                 .build()
         )

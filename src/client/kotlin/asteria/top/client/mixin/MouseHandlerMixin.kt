@@ -22,7 +22,7 @@ class MouseHandlerMixin {
             ci.cancel()
             return
         }
-        if (HudOverlay.mouseReleased(action)) {
+        if (HudOverlay.mouseReleased(buttonInfo.button(), action)) {
             ci.cancel()
             return
         }

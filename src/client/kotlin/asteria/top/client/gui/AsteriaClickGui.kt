@@ -5,6 +5,7 @@ import asteria.top.client.module.Module
 import asteria.top.client.module.ModuleCategory
 import asteria.top.client.module.ModuleManager
 import asteria.top.client.module.setting.BooleanSetting
+import asteria.top.client.module.setting.ColorSetting
 import asteria.top.client.module.setting.EnumSetting
 import asteria.top.client.module.setting.FloatSetting
 import asteria.top.client.module.setting.IntSetting
@@ -15,12 +16,14 @@ import asteria.top.client.render.FontRenderer
 import asteria.top.client.render.FontRenderer.Face
 import asteria.top.client.render.MsdfIconRenderer
 import asteria.top.client.render.PlayerHeadRenderer
+import asteria.top.client.render.TextureRenderer
 import asteria.top.client.util.GuiBoxUtil
 import asteria.top.client.util.GuiShapeUtil
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.resources.Identifier
 import org.lwjgl.glfw.GLFW
+import java.awt.Color
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.exp
@@ -69,6 +72,7 @@ object AsteriaClickGui {
     private const val ROW_HOVER_ANIMATION_MS = 240.0f
     private const val ICON_HOVER_ANIMATION_MS = 140.0f
     private const val ENUM_EXPANSION_ANIMATION_MS = 220.0f
+    private const val COLOR_EXPANSION_ANIMATION_MS = 240.0f
     private const val SCROLL_RESPONSE_MS = 90.0f
     private const val ICON_CLICK_ANIMATION_MS = 520L
 
@@ -88,6 +92,8 @@ object AsteriaClickGui {
     private const val ICON_HOVER_BACKGROUND = 0x35FFFFFF
     private val SETTINGS_ICON = Identifier.fromNamespaceAndPath("asteria", "icons/msdf/settingsoutline.png")
     private val FILTER_ICON = Identifier.fromNamespaceAndPath("asteria", "icons/msdf/filteroutline.png")
+    private val COPY_ICON = Identifier.fromNamespaceAndPath("asteria", "icons/gui/copyoutline.png")
+    private val COLOR_FILTER_ICON = Identifier.fromNamespaceAndPath("asteria", "icons/gui/colorfilterline.png")
 
     data class Rect(val x: Float, val y: Float, val width: Float, val height: Float)
     private data class Frame(val x: Float, val y: Float, val scale: Float, val width: Float, val height: Float)
@@ -111,6 +117,7 @@ object AsteriaClickGui {
         val scale: Float,
         val contentAlpha: Float,
     )
+    private data class ColorPopover(val setting: ColorSetting, val rects: ColorPickerRects, val scale: Float, val alpha: Float)
     private data class Layout(val frame: Frame, val profile: Rect, val panels: List<CategoryPanel>, val popup: Popup?)
     private data class SwitchAnimation(var from: Float, var target: Float, var startedAt: Long)
     private data class SwitchVisual(val position: Float, val stretch: Float)
@@ -118,6 +125,7 @@ object AsteriaClickGui {
     private data class ScrollAnimation(var position: Float, var target: Float, var updatedAt: Long)
     private data class IconClickAnimation(var startedAt: Long)
     private data class NumericAnimation(var value: Float, var updatedAt: Long)
+    private enum class ColorControl { SATURATION_VALUE, HUE }
 
     @JvmStatic
     var visible = false
@@ -132,6 +140,11 @@ object AsteriaClickGui {
     private val popupScroll = ScrollAnimation(0.0f, 0.0f, 0L)
     private var bindingModule: Module? = null
     private var expandedEnum: EnumSetting<*>? = null
+    private var expandedColor: ColorSetting? = null
+    private var presentedColor: ColorSetting? = null
+    private var activeColorControl: ColorControl? = null
+    private var copiedColor: ColorSetting? = null
+    private var copiedAt = 0L
     private var activeNumeric: ModuleSetting<*>? = null
     private var activeNumericRect: Rect? = null
     private val switchAnimations = mutableMapOf<String, SwitchAnimation>()
@@ -159,6 +172,9 @@ object AsteriaClickGui {
             popupExpanded = false
             popupModule = null
             bindingModule = null
+            expandedColor = null
+            presentedColor = null
+            activeColorControl = null
             activeNumeric = null
             activeNumericRect = null
             ClientConfig.save()
@@ -174,6 +190,9 @@ object AsteriaClickGui {
         popupExpanded = false
         popupModule = null
         bindingModule = null
+        expandedColor = null
+        presentedColor = null
+        activeColorControl = null
         activeNumeric = null
         activeNumericRect = null
         ClientConfig.save()
@@ -211,6 +230,11 @@ object AsteriaClickGui {
         layout.panels.forEach { panel ->
             boxes += blurBox(panel.rect, PANEL_CORNER_RADIUS * layout.frame.scale, PANEL_COLOR, guiScale)
         }
+        layout.popup?.let { popup ->
+            colorPopover(popup)?.let { popover ->
+                boxes += blurBox(popover.rects.panel, 5.5f * popover.scale, 0xCF000000.toInt(), guiScale)
+            }
+        }
         return boxes
     }
 
@@ -236,10 +260,18 @@ object AsteriaClickGui {
         val layout = layout()
 
         layout.popup?.let { popup ->
-            if (contains(mouseX, mouseY, popup.rect)) {
-                popup.rows.firstOrNull { contains(mouseX, mouseY, popup.contentRect) && contains(mouseX, mouseY, it.rect) }?.let { row ->
-                    activateSetting(popup.module, row, mouseX, button, popup.scale)
+            colorPopover(popup)?.let { popover ->
+                if (contains(mouseX, mouseY, popover.rects.panel)) {
+                    activateColorPopover(popover, mouseX, mouseY, button)
+                    return true
                 }
+            }
+            if (contains(mouseX, mouseY, popup.rect)) {
+                val clickedRow = popup.rows.firstOrNull { contains(mouseX, mouseY, popup.contentRect) && contains(mouseX, mouseY, it.rect) }
+                clickedRow?.let { row ->
+                    activateSetting(popup.module, row, mouseX, mouseY, button, popup.scale)
+                }
+                if (clickedRow == null) expandedColor = null
                 return true
             }
         }
@@ -256,16 +288,19 @@ object AsteriaClickGui {
                     popupExpanded = false
                     popupModule = null
                     expandedEnum = null
+                    expandedColor = null
                     CosmeticsMenu.openFromClickGui()
                     return true
                 }
                 if (popupModule === row.module && popupExpanded) {
                     popupExpanded = false
                     expandedEnum = null
+                    expandedColor = null
                 } else {
                     popupModule = row.module
                     popupExpanded = true
                     expandedEnum = null
+                    expandedColor = null
                     popupScroll.position = 0.0f
                     popupScroll.target = 0.0f
                     popupScroll.updatedAt = now()
@@ -280,6 +315,7 @@ object AsteriaClickGui {
         if (layout.panels.none { contains(mouseX, mouseY, it.rect) }) {
             popupExpanded = false
             expandedEnum = null
+            expandedColor = null
         }
         return true
     }
@@ -289,6 +325,7 @@ object AsteriaClickGui {
         if (action == GLFW.GLFW_RELEASE) {
             activeNumeric = null
             activeNumericRect = null
+            activeColorControl = null
         }
     }
 
@@ -315,6 +352,7 @@ object AsteriaClickGui {
     fun extract(graphics: GuiGraphicsExtractor) {
         if (!shouldRender()) return
         dragNumeric()
+        dragColorPicker()
         val layout = layout()
         layoutBoxes(layout).filterNot { it.blur }.forEach { GuiBoxUtil.draw(graphics, it) }
         layout.panels.forEach { panel ->
@@ -331,6 +369,10 @@ object AsteriaClickGui {
             popupBoxes(layout).forEach { GuiBoxUtil.draw(graphics, it) }
             graphics.nextStratum()
             drawPopupText(graphics, popup, animationProgress())
+            colorPopover(popup)?.let { popover ->
+                graphics.nextStratum()
+                drawColorPopover(graphics, popup, popover)
+            }
         }
     }
 
@@ -472,7 +514,7 @@ object AsteriaClickGui {
                     targets += SettingTarget("${setting.name}: ${option.name}", setting, option)
                 }
             } else {
-                targets += SettingTarget(setting.name, setting)
+                targets += SettingTarget(if (setting is ColorSetting) "Цвет" else setting.name, setting)
                 if (setting is EnumSetting<*>) {
                     val expansion = enumExpansionProgress(module, setting)
                     if (expansion <= 0.001f) return@forEach
@@ -584,6 +626,18 @@ object AsteriaClickGui {
                         withAlpha(WHITE, alpha * popup.contentAlpha),
                     )
                 }
+                if (setting is ColorSetting) {
+                    val swatch = colorSwatchRect(row, scale)
+                    AsteriaGuiRenderer.rect(
+                        boxes,
+                        swatch.x,
+                        swatch.y,
+                        swatch.width,
+                        swatch.height,
+                        2.5f * scale,
+                        withAlpha(setting.argb, rowAlpha),
+                    )
+                }
             }
             val clip = GuiBoxUtil.Clip(
                 popup.contentRect.x,
@@ -596,6 +650,93 @@ object AsteriaClickGui {
             }
         }
         return boxes
+    }
+
+    private data class ColorPickerRects(
+        val panel: Rect,
+        val saturation: Rect,
+        val hue: Rect,
+        val hex: Rect,
+        val filter: Rect,
+        val copy: Rect,
+    )
+
+    private fun colorPopover(popup: Popup): ColorPopover? {
+        val setting = expandedColor ?: presentedColor ?: return null
+        val row = popup.rows.firstOrNull { it.target.setting === setting } ?: return null
+        val progress = colorExpansionProgress(popup.module, setting)
+        if (progress <= 0.001f && expandedColor !== setting) {
+            if (presentedColor === setting) presentedColor = null
+            return null
+        }
+        val scale = popup.scale
+        val width = 114.0f * scale
+        val height = 75.0f * scale
+        val screenW = Minecraft.getInstance().window.guiScaledWidth.toFloat()
+        val screenH = Minecraft.getInstance().window.guiScaledHeight.toFloat()
+        val preferredX = row.rect.x + row.rect.width + 5.0f * scale
+        val fallbackX = row.rect.x - width - 5.0f * scale
+        val x = (if (preferredX + width <= screenW - 4.0f) preferredX else fallbackX).coerceIn(4.0f, screenW - width - 4.0f)
+        val y = (row.rect.y + row.rect.height + 3.0f * scale).coerceIn(4.0f, screenH - height - 4.0f)
+        val panel = Rect(x, y, width, height)
+        val inset = 4.0f * scale
+        val contentWidth = width - inset * 2.0f
+        val saturation = Rect(x + inset, y + inset, contentWidth, 46.5f * scale)
+        val hue = Rect(x + inset, y + 54.5f * scale, contentWidth, 3.0f * scale)
+        val hex = Rect(x + inset, y + 61.5f * scale, contentWidth, 9.5f * scale)
+        val filter = Rect(hex.x + 2.0f * scale, hex.y + 1.0f * scale, 7.5f * scale, 7.5f * scale)
+        val copy = Rect(hex.x + hex.width - 9.5f * scale, hex.y + 1.0f * scale, 7.5f * scale, 7.5f * scale)
+        return ColorPopover(setting, ColorPickerRects(panel, saturation, hue, hex, filter, copy), scale, progress * popup.contentAlpha * animationProgress())
+    }
+
+    private fun drawColorPopover(graphics: GuiGraphicsExtractor, popup: Popup, popover: ColorPopover) {
+        val setting = popover.setting
+        val rects = popover.rects
+        val scale = popover.scale
+        val fade = popover.alpha
+        val rise = (1.0f - fade.coerceIn(0.0f, 1.0f)) * 3.0f * scale
+        val pose = graphics.pose()
+        pose.pushMatrix()
+        pose.translate(0.0f, rise)
+
+        GuiShapeUtil.softShadow(graphics, rects.panel.x, rects.panel.y, rects.panel.x + rects.panel.width, rects.panel.y + rects.panel.height, 5.5f * scale, 7.0f * scale, 0.34f * fade, 0.72f)
+        GuiShapeUtil.roundedFill(graphics, rects.panel.x, rects.panel.y, rects.panel.x + rects.panel.width, rects.panel.y + rects.panel.height, 5.5f * scale, withAlpha(0xE6000000.toInt(), fade))
+
+        val hsv = setting.hsv()
+        val hueColor = Color.HSBtoRGB(hsv[0], 1.0f, 1.0f)
+        GuiShapeUtil.roundedFourColorGradientFill(
+            graphics,
+            rects.saturation.x, rects.saturation.y,
+            rects.saturation.x + rects.saturation.width, rects.saturation.y + rects.saturation.height,
+            5.5f * scale,
+            withAlpha(WHITE, fade), withAlpha(hueColor, fade),
+            withAlpha(0xFF000000.toInt(), fade), withAlpha(0xFF000000.toInt(), fade),
+        )
+
+        val hueStops = intArrayOf(0xFFFF0000.toInt(), 0xFFFF6A00.toInt(), 0xFFFFD900.toInt(), 0xFF15FF00.toInt(), 0xFF00FFF2.toInt(), 0xFF0004FF.toInt(), 0xFFD500FF.toInt(), 0xFFFF0000.toInt())
+        GuiShapeUtil.roundedFill(graphics, rects.hue.x, rects.hue.y, rects.hue.x + rects.hue.width, rects.hue.y + rects.hue.height, rects.hue.height * 0.5f, withAlpha(hueStops[0], fade))
+        val cap = rects.hue.height * 0.5f
+        val gradientX = rects.hue.x + cap
+        val gradientW = rects.hue.width - cap * 2.0f
+        for (index in 0 until hueStops.lastIndex) {
+            val left = gradientX + gradientW * index / hueStops.lastIndex
+            val right = gradientX + gradientW * (index + 1) / hueStops.lastIndex
+            GuiShapeUtil.roundedHorizontalGradientFill(graphics, left - 0.05f, rects.hue.y, right + 0.05f, rects.hue.y + rects.hue.height, 0.0f, withAlpha(hueStops[index], fade), withAlpha(hueStops[index + 1], fade))
+        }
+
+        val smoothSaturation = smoothNumericPercent("color:s:${popup.module.name}:${setting.name}", hsv[1])
+        val smoothBrightness = smoothNumericPercent("color:v:${popup.module.name}:${setting.name}", hsv[2])
+        val smoothHue = smoothNumericPercent("color:h:${popup.module.name}:${setting.name}", hsv[0])
+        GuiShapeUtil.circleFill(graphics, rects.saturation.x + rects.saturation.width * smoothSaturation, rects.saturation.y + rects.saturation.height * (1.0f - smoothBrightness), 2.15f * scale, withAlpha(WHITE, fade))
+        GuiShapeUtil.circleFill(graphics, rects.hue.x + rects.hue.width * smoothHue, rects.hue.y + rects.hue.height * 0.5f, 2.35f * scale, withAlpha(WHITE, fade))
+
+        GuiShapeUtil.roundedFill(graphics, rects.hex.x, rects.hex.y, rects.hex.x + rects.hex.width, rects.hex.y + rects.hex.height, 3.0f * scale, withAlpha(0x14FFFFFF, fade))
+        TextureRenderer.draw(graphics, COLOR_FILTER_ICON, rects.filter.x, rects.filter.y, rects.filter.width, rects.filter.height, withAlpha(ACCENT, fade))
+        text(graphics, Face.SfRegular, setting.displayValue(), rects.hex.x + 12.0f * scale, rects.hex.y + 0.9f * scale, 7.4f * scale, withAlpha(WHITE, fade))
+        val copied = copiedColor === setting && now() - copiedAt < 1100L
+        if (copied) textRight(graphics, "Copied!", rects.copy.x - 2.0f * scale, rects.hex.y + 1.8f * scale, 5.3f * scale, withAlpha(TEXT_MUTED, fade))
+        TextureRenderer.draw(graphics, COPY_ICON, rects.copy.x, rects.copy.y, rects.copy.width, rects.copy.height, withAlpha(ACCENT, fade))
+        pose.popMatrix()
     }
 
     private fun moduleRowBoxes(panel: CategoryPanel, scale: Float, alpha: Float): List<GuiBoxUtil.Box> {
@@ -709,7 +850,7 @@ object AsteriaClickGui {
                     target.enumOptionIndex != null -> TEXT_MUTED
                     else -> WHITE
                 }
-                val labelSize = 8.5f * popupScale
+                val labelSize = 9.5f * popupScale
                 val optionVisualHeight = if (target.enumOptionIndex != null) {
                     row.rect.height + POPUP_ROW_GAP * target.visibility * popupScale
                 } else {
@@ -734,7 +875,7 @@ object AsteriaClickGui {
                 val value = settingValue(popup.module, target)
                 if (value != null && target.option == null && target.setting !is BooleanSetting) {
                     val valueColor = if (target.setting is FloatSetting || target.setting is IntSetting) WHITE else if (target.bind) TEXT_MUTED else ACCENT
-                    textRight(graphics, value, row.rect.x + row.rect.width, labelY, 8.0f * popupScale, withAlpha(valueColor, rowAlpha))
+                    textRight(graphics, value, row.rect.x + row.rect.width, labelY, 9.0f * popupScale, withAlpha(valueColor, rowAlpha))
                 }
                 if (enumSetting != null && target.enumOptionIndex == null) {
                     val iconSize = 8.5f * popupScale
@@ -768,8 +909,9 @@ object AsteriaClickGui {
         )
     }
 
-    private fun activateSetting(module: Module, row: SettingRow, mouseX: Float, button: Int, scale: Float) {
+    private fun activateSetting(module: Module, row: SettingRow, mouseX: Float, mouseY: Float, button: Int, scale: Float) {
         val target = row.target
+        if (target.setting !is ColorSetting) expandedColor = null
         if (target.bind) {
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) bindingModule = module
             return
@@ -788,6 +930,12 @@ object AsteriaClickGui {
         when (val setting = target.setting) {
             is BooleanSetting -> setting.adjust(1)
             is EnumSetting<*> -> expandedEnum = if (expandedEnum === setting) null else setting
+            is ColorSetting -> if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && contains(mouseX, mouseY, colorSwatchRect(row, scale))) {
+                val openingColor = expandedColor !== setting
+                expandedColor = if (openingColor) setting else null
+                presentedColor = setting
+                expandedEnum = null
+            }
             is FloatSetting, is IntSetting -> {
                 val trackRect = Rect(
                     row.rect.x,
@@ -801,6 +949,57 @@ object AsteriaClickGui {
             }
         }
         ClientConfig.save()
+    }
+
+    private fun colorSwatchRect(row: SettingRow, scale: Float): Rect {
+        val size = 10.5f * scale
+        return Rect(row.rect.x + row.rect.width - size, row.rect.y + (row.rect.height - size) * 0.5f, size, size)
+    }
+
+    private fun dragColorPicker() {
+        val control = activeColorControl ?: return
+        val setting = expandedColor ?: return
+        val popup = layout().popup ?: return
+        val popover = colorPopover(popup)?.takeIf { it.setting === setting } ?: return
+        updateColorFromPointer(setting, popover.rects, mouseX(), mouseY(), control)
+    }
+
+    private fun activateColorPopover(popover: ColorPopover, mouseX: Float, mouseY: Float, button: Int) {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return
+        val rects = popover.rects
+        when {
+            contains(mouseX, mouseY, rects.saturation) -> {
+                activeColorControl = ColorControl.SATURATION_VALUE
+                updateColorFromPointer(popover.setting, rects, mouseX, mouseY, activeColorControl!!)
+            }
+            contains(mouseX, mouseY, rects.hue) -> {
+                activeColorControl = ColorControl.HUE
+                updateColorFromPointer(popover.setting, rects, mouseX, mouseY, activeColorControl!!)
+            }
+            contains(mouseX, mouseY, rects.copy) -> copyColor(popover.setting)
+        }
+    }
+
+    private fun updateColorFromPointer(setting: ColorSetting, rects: ColorPickerRects, mouseX: Float, mouseY: Float, control: ColorControl) {
+        val hsv = setting.hsv()
+        when (control) {
+            ColorControl.SATURATION_VALUE -> setting.setHsv(
+                hsv[0],
+                ((mouseX - rects.saturation.x) / rects.saturation.width).coerceIn(0.0f, 1.0f),
+                (1.0f - (mouseY - rects.saturation.y) / rects.saturation.height).coerceIn(0.0f, 1.0f),
+            )
+            ColorControl.HUE -> setting.setHsv(
+                ((mouseX - rects.hue.x) / rects.hue.width).coerceIn(0.0f, 1.0f),
+                hsv[1],
+                hsv[2],
+            )
+        }
+    }
+
+    private fun copyColor(setting: ColorSetting) {
+        GLFW.glfwSetClipboardString(Minecraft.getInstance().window.handle(), setting.displayValue())
+        copiedColor = setting
+        copiedAt = now()
     }
 
     private fun dragNumeric() {
@@ -863,6 +1062,16 @@ object AsteriaClickGui {
             "enum:${module.name}:${setting.name}",
             expandedEnum === setting,
             ENUM_EXPANSION_ANIMATION_MS,
+        )
+    }
+
+    private fun colorExpansionProgress(module: Module, setting: ColorSetting): Float {
+        return easeOut(
+            hoverProgress(
+                "color:${module.name}:${setting.name}",
+                expandedColor === setting,
+                COLOR_EXPANSION_ANIMATION_MS,
+            )
         )
     }
 

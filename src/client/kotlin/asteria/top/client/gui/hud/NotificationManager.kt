@@ -27,6 +27,15 @@ object NotificationManager {
     private const val PREVIEW_INTERVAL_MS = 3000L
     private const val PREVIEW_TRANSITION_MS = 320L
 
+    // The same medium cut the keybind list, the watermark and the target panel
+    // use: the regular face has no solid core left at 8.5px and reads smeared
+    // beside them.
+    private val FACE = FontRenderer.Face.SfMedium
+
+    private const val TEXT = 0xFFFFFFFF.toInt()
+    private const val ICON_ENABLED = 0xFF50FF2D.toInt()
+    private const val ICON_DISABLED = 0xFFFF5B5B.toInt()
+
     private val checkIcon = Identifier.fromNamespaceAndPath("asteria", "icons/msdf/checkoutline.png")
     private val xIcon = Identifier.fromNamespaceAndPath("asteria", "icons/msdf/xoutline.png")
     private val notifications = mutableListOf<Notification>()
@@ -53,23 +62,25 @@ object NotificationManager {
             if (!ModuleManager.postProcessing.enabled) {
                 HudStyle.rect(graphics, layout.x, layout.y, layout.width, rowHeight, RADIUS * rowScale, withAlpha(0xCC000000.toInt(), layout.progress))
             }
+            val enabled = layout.notification.enabled
             MsdfIconRenderer.draw(
                 graphics,
-                if (layout.notification.enabled) checkIcon else xIcon,
+                if (enabled) checkIcon else xIcon,
                 layout.x + PADDING * rowScale,
                 layout.y + (rowHeight - ICON_SIZE * rowScale) * 0.5f,
                 ICON_SIZE * rowScale,
                 ICON_SIZE * rowScale,
-                withAlpha(if (layout.notification.enabled) 0xFF50FF2D.toInt() else 0xFFFF5B5B.toInt(), layout.progress),
+                withAlpha(if (enabled) ICON_ENABLED else ICON_DISABLED, layout.progress),
+                edge = MsdfIconRenderer.Edge.CrispRange12,
             )
             FontRenderer.draw(
                 graphics,
-                FontRenderer.Face.SfRegular,
+                FACE,
                 text(layout.notification),
                 layout.x + (PADDING + ICON_SIZE + ICON_TEXT_GAP) * rowScale,
                 layout.y + 5.75f * rowScale,
                 FONT_SIZE * rowScale,
-                withAlpha(0xFFFFFFFF.toInt(), layout.progress),
+                withAlpha(TEXT, layout.progress),
             )
         }
     }
@@ -153,9 +164,12 @@ object NotificationManager {
             if (progress <= 0.001f) return@mapIndexedNotNull null
             val slot = if (preview) index.toFloat() else animatedSlot(notification.id, index, now)
             val text = text(notification)
-            val baseWidth = PADDING + ICON_SIZE + ICON_TEXT_GAP + FontRenderer.width(FontRenderer.Face.SfRegular, text, FONT_SIZE) + PADDING
+            val baseWidth = PADDING + ICON_SIZE + ICON_TEXT_GAP + FontRenderer.width(FACE, text, FONT_SIZE) + PADDING
             val width = baseWidth * rowScale
-            val x = (mc.window.guiScaledWidth - width) * 0.5f
+            // Rounded, not centred exactly: a card whose width is odd lands the
+            // icon and every glyph on a half pixel, and both then resolve across
+            // two pixel columns instead of one.
+            val x = kotlin.math.round((mc.window.guiScaledWidth - width) * 0.5f)
             val enterOffset = if (preview) 0.0f else -8.0f * (1.0f - easeOutCubic(progress))
             val y = anchorY + slot * (HEIGHT + STACK_GAP) * rowScale + enterOffset * rowScale
             Layout(notification, x, y, width, rowScale, progress)

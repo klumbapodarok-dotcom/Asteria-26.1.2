@@ -23,13 +23,14 @@ object PlayerHeadRenderer {
         size: Float,
         radius: Float,
         includeHatLayer: Boolean = false,
+        color: Int = 0xFFFFFFFF.toInt(),
     ) {
         if (includeHatLayer) {
-            drawHead(graphics, player, x, y, size, radius)
+            drawHead(graphics, player, x, y, size, radius, color = color)
             return
         }
         val skin = player.skin.body().texturePath()
-        RoundedTextureRenderer.skinRegion(graphics, skin, x, y, size, size, radius, 8.0f, 8.0f)
+        RoundedTextureRenderer.skinRegion(graphics, skin, x, y, size, size, radius, 8.0f, 8.0f, color = color)
     }
 
     fun drawHead(
@@ -40,11 +41,23 @@ object PlayerHeadRenderer {
         size: Float,
         radius: Float,
         gap: Float = 0.0f,
+        color: Int = 0xFFFFFFFF.toInt(),
     ) {
         val skin = player.skin.body().texturePath()
         val superGap = gap * 2.0f
-        RoundedTextureRenderer.skinRegion(graphics, skin, x + gap, y + gap, size - superGap, size - superGap, radius, 8.0f, 8.0f)
-        RoundedTextureRenderer.skinRegion(graphics, skin, x, y, size, size, radius, 40.0f, 8.0f)
+        RoundedTextureRenderer.skinRegion(graphics, skin, x + gap, y + gap, size - superGap, size - superGap, radius, 8.0f, 8.0f, color = color)
+        RoundedTextureRenderer.skinRegion(
+            graphics,
+            skin,
+            x,
+            y,
+            size,
+            size,
+            radius,
+            40.0f,
+            8.0f,
+            color = color,
+        )
     }
 
     fun drawStableHead(

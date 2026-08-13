@@ -25,7 +25,7 @@ float hash31(vec3 p) {
     return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
 }
 
-float noise3(vec3 p) {
+float asteriaValueNoise3(vec3 p) {
     vec3 i = floor(p);
     vec3 f = fract(p);
     vec3 w3 = f * f * (3.0 - 2.0 * f);
@@ -50,7 +50,7 @@ float fbm3(vec3 p) {
     float s = 0.0;
     float a = 0.5;
     for (int i = 0; i < 5; i++) {
-        s += a * noise3(p);
+        s += a * asteriaValueNoise3(p);
         p *= 2.07;
         a *= 0.5;
     }

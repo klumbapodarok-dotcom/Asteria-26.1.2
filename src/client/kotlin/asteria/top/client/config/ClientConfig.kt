@@ -7,6 +7,7 @@ import com.google.gson.JsonParser
 import asteria.top.client.command.CommandManager
 import asteria.top.client.module.ModuleManager
 import asteria.top.client.module.setting.BooleanSetting
+import asteria.top.client.module.setting.ColorSetting
 import asteria.top.client.module.setting.EnumSetting
 import asteria.top.client.module.setting.FloatSetting
 import asteria.top.client.module.setting.IntSetting
@@ -69,7 +70,12 @@ object ClientConfig {
                 moduleJson.get("bind")?.takeIf { it.isJsonPrimitive }?.asInt?.let { module.bind = it }
                 val settings = moduleJson.getAsJsonObject("settings") ?: return@forEach
                 module.settings.forEach { setting ->
-                    settings.get(setting.name)?.let { loadSetting(setting, it) }
+                    val value = settings.get(setting.name)
+                    if (value != null) {
+                        loadSetting(setting, value)
+                    } else if (setting is ColorSetting) {
+                        loadLegacyColor(setting, settings)
+                    }
                 }
             }
         }.onFailure {
@@ -120,6 +126,7 @@ object ClientConfig {
     private fun settingJson(setting: ModuleSetting<*>): JsonElement {
         return when (setting) {
             is BooleanSetting -> primitive(setting.value)
+            is ColorSetting -> primitive(setting.value)
             is FloatSetting -> primitive(setting.value)
             is IntSetting -> primitive(setting.value)
             is EnumSetting<*> -> primitive(setting.value.name)
@@ -135,6 +142,15 @@ object ClientConfig {
     private fun loadSetting(setting: ModuleSetting<*>, element: JsonElement) {
         when (setting) {
             is BooleanSetting -> if (element.isJsonPrimitive) setting.setRaw(element.asBoolean)
+            is ColorSetting -> if (element.isJsonPrimitive) {
+                val primitive = element.asJsonPrimitive
+                val color = if (primitive.isString && primitive.asString.startsWith("#")) {
+                    primitive.asString.removePrefix("#").toIntOrNull(16) ?: return
+                } else {
+                    primitive.asInt
+                }
+                setting.setRaw(color)
+            }
             is FloatSetting -> if (element.isJsonPrimitive) setting.setRaw(element.asFloat)
             is IntSetting -> if (element.isJsonPrimitive) setting.setRaw(element.asInt)
             is EnumSetting<*> -> loadEnum(setting, element)
@@ -145,6 +161,14 @@ object ClientConfig {
                 }
             }
         }
+    }
+
+    private fun loadLegacyColor(setting: ColorSetting, settings: JsonObject) {
+        val names = setting.legacyRgbNames ?: return
+        val red = settings.get(names.first)?.takeIf { it.isJsonPrimitive }?.asInt ?: return
+        val green = settings.get(names.second)?.takeIf { it.isJsonPrimitive }?.asInt ?: return
+        val blue = settings.get(names.third)?.takeIf { it.isJsonPrimitive }?.asInt ?: return
+        setting.setRaw((red.coerceIn(0, 255) shl 16) or (green.coerceIn(0, 255) shl 8) or blue.coerceIn(0, 255))
     }
 
     private fun loadEnum(setting: EnumSetting<*>, element: JsonElement) {

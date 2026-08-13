@@ -22,6 +22,6 @@ object HudOverlay {
     fun mouseClicked(button: Int, action: Int): Boolean =
         NotificationManager.mouseClicked(button, action) || HudManager.mouseClicked(button, action)
 
-    fun mouseReleased(action: Int): Boolean =
-        NotificationManager.mouseReleased(action) || HudManager.mouseReleased(action)
+    fun mouseReleased(button: Int, action: Int): Boolean =
+        NotificationManager.mouseReleased(action) || HudManager.mouseReleased(button, action)
 }

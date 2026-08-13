@@ -47,9 +47,7 @@ class FogRendererMixin {
         val color = if (ambience.fogColorMode.value == AmbienceModule.FogColorMode.INTERFACE) {
             HudStyle.ACCENT
         } else {
-            (ambience.fogColorRed.value shl 16) or
-                (ambience.fogColorGreen.value shl 8) or
-                ambience.fogColorBlue.value
+            ambience.fogColor.value
         }
         data.color.x = ((color shr 16) and 0xFF) / 255.0f
         data.color.y = ((color shr 8) and 0xFF) / 255.0f
